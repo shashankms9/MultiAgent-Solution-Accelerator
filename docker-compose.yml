@@ -1,0 +1,32 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      # Claude Code CLI → Azure Foundry authentication
+      - CLAUDE_CODE_USE_FOUNDRY=true
+      - ANTHROPIC_FOUNDRY_API_KEY=${AZURE_FOUNDRY_API_KEY}
+      - ANTHROPIC_FOUNDRY_BASE_URL=${AZURE_FOUNDRY_ENDPOINT}
+      # App settings
+      - FRONTEND_ORIGIN=http://localhost:3000
+    env_file:
+      - ./backend/.env
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      backend:
+        condition: service_healthy

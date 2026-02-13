@@ -455,6 +455,13 @@ prior-auth-maf/
 │           └── index.ts                  # TypeScript types (request, response, agents, audit, decision, notification)
 │
 ├── .gitignore
+├── .dockerignore                          # Docker build exclusions
+├── docker-compose.yml                     # Two-container local dev (backend + frontend)
+├── backend/
+│   └── Dockerfile                         # Python + Claude Agent SDK (CLI bundled in wheel)
+├── frontend/
+│   ├── Dockerfile                         # Multi-stage: Node build → Nginx serve
+│   └── nginx.conf                         # Proxies /api → backend, SPA catch-all
 └── README.md                             # This file
 ```
 
@@ -1096,6 +1103,158 @@ AZURE_STORAGE_ACCOUNT_URL=https://<account>.blob.core.windows.net
 
 ---
 
+## Docker Deployment
+
+### Architecture
+
+The app runs as two containers — a Python backend and an Nginx frontend:
+
+```
+┌────────────────────────────────────────────────────────────┐
+│  localhost:3000 (frontend - Nginx)                         │
+│    ├── /*      → React SPA (static files)                  │
+│    └── /api/*  → reverse proxy to backend:8000             │
+│                   (300s timeout for agent processing)      │
+└──────────────────────┬─────────────────────────────────────┘
+                       │
+┌──────────────────────▼─────────────────────────────────────┐
+│  backend:8000 (FastAPI + uvicorn)                          │
+│    ├── /api/review    → multi-agent orchestrator           │
+│    ├── /api/decision  → accept/override + PDF letter       │
+│    └── /health        → container health check             │
+│                                                            │
+│  ClaudeAgent (MS Agent Framework)                          │
+│    └── claude-agent-sdk                                    │
+│         └── bundled Claude Code CLI (in platform wheel)    │
+│              ├── Azure Foundry API (via env vars)          │
+│              └── MCP Servers (NPI, ICD-10, CMS, PubMed,   │
+│                   Clinical Trials)                         │
+└────────────────────────────────────────────────────────────┘
+```
+
+### How the Claude Agent SDK works
+
+The `claude-agent-sdk` Python package ships **platform-specific wheels** for
+Linux x86-64, Linux ARM64, macOS ARM64, and Windows x64. Each wheel bundles
+the Claude Code CLI binary inside `_bundled/` — no separate Node.js or CLI
+installation is needed.
+
+When `ClaudeAgent.run()` is called, the SDK spawns the bundled CLI as a
+subprocess, which handles:
+
+- Anthropic API calls (authenticated via `ANTHROPIC_FOUNDRY_*` env vars)
+- MCP server connections and tool routing
+- Tool execution loop (tool_use → tool_result → repeat)
+- Session and context management
+
+On platforms without a pre-built wheel (e.g., Windows ARM64), the SDK falls
+back to a system-installed `claude` CLI via `shutil.which("claude")`.
+
+### Prerequisites
+
+- Docker Desktop (or any OCI container runtime with compose support)
+- Azure Foundry API key and endpoint
+
+### Container details
+
+**Backend container** (`backend/Dockerfile`):
+
+| Layer | Details |
+|-------|---------|
+| Base image | `python:3.12-slim` |
+| System packages | `curl` (for health check only) |
+| Python dependencies | `pip install -r requirements.txt` |
+| Claude Code CLI | Bundled inside `claude-agent-sdk` platform wheel — no Node.js needed |
+| Port | 8000 |
+
+**Frontend container** (`frontend/Dockerfile`):
+
+| Layer | Details |
+|-------|---------|
+| Build stage | `node:20-slim` — `npm ci && npm run build` |
+| Runtime stage | `nginx:alpine` — serves built React app |
+| Proxy | `/api/*` → `http://backend:8000` (via `nginx.conf`) |
+| Port | 80 (mapped to 3000 in docker-compose) |
+
+### Running locally with Docker Compose
+
+```bash
+# Build and start both containers
+docker compose up --build
+
+# App is available at http://localhost:3000
+# Backend health check at http://localhost:8000/health
+```
+
+The `docker-compose.yml` reads your `backend/.env` file and maps the Azure
+Foundry credentials to the environment variables the Claude Code CLI expects:
+
+| Your `.env` variable | Maps to (container) | Purpose |
+|----------------------|---------------------|---------|
+| `AZURE_FOUNDRY_API_KEY` | `ANTHROPIC_FOUNDRY_API_KEY` | Azure Foundry auth |
+| `AZURE_FOUNDRY_ENDPOINT` | `ANTHROPIC_FOUNDRY_BASE_URL` | Foundry endpoint URL |
+| (set automatically) | `CLAUDE_CODE_USE_FOUNDRY=true` | Enables Foundry mode |
+
+### Building without local Docker (Azure Container Registry)
+
+If your machine doesn't support virtualization (required for Docker Desktop),
+build directly in Azure:
+
+```bash
+# Create a container registry (one-time)
+az acr create --name priorauthacr --resource-group <rg> --sku Basic
+
+# Build images in the cloud — no local Docker needed
+az acr build --registry priorauthacr \
+  --image prior-auth-backend:latest \
+  --file backend/Dockerfile ./backend
+
+az acr build --registry priorauthacr \
+  --image prior-auth-frontend:latest \
+  --file frontend/Dockerfile ./frontend
+```
+
+### Deploying to Azure Container Apps
+
+```bash
+# Create Container Apps environment (one-time)
+az containerapp env create \
+  --name prior-auth-env \
+  --resource-group <rg> \
+  --location <region>
+
+# Deploy backend
+az containerapp create \
+  --name prior-auth-backend \
+  --resource-group <rg> \
+  --environment prior-auth-env \
+  --image <acr-name>.azurecr.io/prior-auth-backend:latest \
+  --target-port 8000 \
+  --ingress internal \
+  --min-replicas 1 \
+  --env-vars \
+    CLAUDE_CODE_USE_FOUNDRY=true \
+    ANTHROPIC_FOUNDRY_API_KEY=secretref:foundry-key \
+    ANTHROPIC_FOUNDRY_BASE_URL=https://<resource>.services.ai.azure.com/anthropic \
+    FRONTEND_ORIGIN=https://prior-auth-frontend.<region>.azurecontainerapps.io
+
+# Deploy frontend
+az containerapp create \
+  --name prior-auth-frontend \
+  --resource-group <rg> \
+  --environment prior-auth-env \
+  --image <acr-name>.azurecr.io/prior-auth-frontend:latest \
+  --target-port 80 \
+  --ingress external \
+  --min-replicas 1
+```
+
+> **Note:** Update the frontend `nginx.conf` to proxy `/api` to the backend
+> Container App's internal FQDN instead of `http://backend:8000` when
+> deploying to Azure Container Apps.
+
+---
+
 ## References
 
 - [Anthropic Healthcare MCP Marketplace](https://github.com/anthropics/healthcare)
@@ -1105,6 +1264,7 @@ AZURE_STORAGE_ACCOUNT_URL=https://<account>.blob.core.windows.net
 - [Azure Foundry Claude Models](https://learn.microsoft.com/en-us/azure/ai-foundry/foundry-models/how-to/use-foundry-models-claude)
 - [Claude Prior Auth Review Tutorial](https://claude.com/resources/tutorials/how-to-use-the-prior-auth-review-sample-skill-with-claude-2ggy8)
 - [Model Context Protocol (MCP)](https://modelcontextprotocol.io/)
+- [Claude Agent SDK](https://platform.claude.com/docs/en/agent-sdk/overview)
 - [Anthropic Agent Skills](https://platform.claude.com/docs/en/docs/agents-and-tools/agent-skills/overview)
 
 ---
