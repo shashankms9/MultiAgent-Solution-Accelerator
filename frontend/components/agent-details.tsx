@@ -23,6 +23,21 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ConfidenceBar } from "@/components/confidence-bar";
+import {
+  ClipboardCheck,
+  Stethoscope,
+  Shield,
+  Bot,
+  AlertTriangle,
+  Info,
+  FileSearch,
+  BookOpen,
+  FlaskConical,
+  UserCheck,
+  FileCheck,
+  ListChecks,
+  ScrollText,
+} from "lucide-react";
 
 function statusBadge(status: string) {
   const map: Record<string, "success" | "warning" | "destructive" | "secondary"> = {
@@ -77,7 +92,10 @@ function ComplianceTab({ data }: { data: ComplianceResult }) {
 
       {data.missing_items.length > 0 && (
         <div>
-          <h4 className="text-sm font-medium mb-1">Missing Items</h4>
+          <h4 className="text-sm font-medium mb-1 flex items-center gap-1.5">
+            <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+            Missing Items
+          </h4>
           <ul className="list-disc list-inside text-sm text-muted-foreground space-y-0.5">
             {data.missing_items.map((m, i) => (
               <li key={i}>{m}</li>
@@ -88,7 +106,8 @@ function ComplianceTab({ data }: { data: ComplianceResult }) {
 
       {data.additional_info_requests.length > 0 && (
         <div>
-          <h4 className="text-sm font-medium mb-1">
+          <h4 className="text-sm font-medium mb-1 flex items-center gap-1.5">
+            <Info className="h-3.5 w-3.5 text-blue-500" />
             Additional Info Requests
           </h4>
           <ul className="list-disc list-inside text-sm text-muted-foreground space-y-0.5">
@@ -112,7 +131,10 @@ function ClinicalTab({ data }: { data: ClinicalResult }) {
       {/* Diagnosis validation */}
       {data.diagnosis_validation.length > 0 && (
         <div>
-          <h4 className="text-sm font-medium mb-2">Diagnosis Validation</h4>
+          <h4 className="text-sm font-medium mb-2 flex items-center gap-1.5">
+            <FileCheck className="h-3.5 w-3.5 text-primary" />
+            Diagnosis Validation
+          </h4>
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
@@ -147,7 +169,10 @@ function ClinicalTab({ data }: { data: ClinicalResult }) {
       {/* Clinical extraction */}
       {data.clinical_extraction && (
         <div>
-          <h4 className="text-sm font-medium mb-2">Clinical Extraction</h4>
+          <h4 className="text-sm font-medium mb-2 flex items-center gap-1.5">
+            <FileSearch className="h-3.5 w-3.5 text-primary" />
+            Clinical Extraction
+          </h4>
           <Card className="bg-muted/40">
             <CardContent className="pt-4 space-y-2 text-sm">
               <div>
@@ -207,7 +232,10 @@ function ClinicalTab({ data }: { data: ClinicalResult }) {
       {/* Literature */}
       {data.literature_support.length > 0 && (
         <div>
-          <h4 className="text-sm font-medium mb-2">Literature Support</h4>
+          <h4 className="text-sm font-medium mb-2 flex items-center gap-1.5">
+            <BookOpen className="h-3.5 w-3.5 text-primary" />
+            Literature Support
+          </h4>
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
@@ -238,7 +266,10 @@ function ClinicalTab({ data }: { data: ClinicalResult }) {
       {/* Clinical Trials */}
       {data.clinical_trials.length > 0 && (
         <div>
-          <h4 className="text-sm font-medium mb-2">Clinical Trials</h4>
+          <h4 className="text-sm font-medium mb-2 flex items-center gap-1.5">
+            <FlaskConical className="h-3.5 w-3.5 text-primary" />
+            Clinical Trials
+          </h4>
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
@@ -273,7 +304,10 @@ function ClinicalTab({ data }: { data: ClinicalResult }) {
       {/* Summary */}
       {data.clinical_summary && (
         <div>
-          <h4 className="text-sm font-medium mb-1">Clinical Summary</h4>
+          <h4 className="text-sm font-medium mb-1 flex items-center gap-1.5">
+            <ScrollText className="h-3.5 w-3.5 text-primary" />
+            Clinical Summary
+          </h4>
           <p className="text-sm text-muted-foreground whitespace-pre-wrap">
             {data.clinical_summary}
           </p>
@@ -283,7 +317,10 @@ function ClinicalTab({ data }: { data: ClinicalResult }) {
       {/* Tool results */}
       {data.tool_results.length > 0 && (
         <div>
-          <h4 className="text-sm font-medium mb-2">Tool Results</h4>
+          <h4 className="text-sm font-medium mb-2 flex items-center gap-1.5">
+            <ListChecks className="h-3.5 w-3.5 text-primary" />
+            Tool Results
+          </h4>
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
@@ -324,7 +361,10 @@ function CoverageTab({ data }: { data: CoverageResult }) {
       {/* Provider verification */}
       {data.provider_verification && (
         <div>
-          <h4 className="text-sm font-medium mb-2">Provider Verification</h4>
+          <h4 className="text-sm font-medium mb-2 flex items-center gap-1.5">
+            <UserCheck className="h-3.5 w-3.5 text-primary" />
+            Provider Verification
+          </h4>
           <Card className="bg-muted/40">
             <CardContent className="pt-4 text-sm space-y-1">
               <div>
@@ -356,7 +396,10 @@ function CoverageTab({ data }: { data: CoverageResult }) {
       {/* Coverage policies */}
       {data.coverage_policies.length > 0 && (
         <div>
-          <h4 className="text-sm font-medium mb-2">Coverage Policies</h4>
+          <h4 className="text-sm font-medium mb-2 flex items-center gap-1.5">
+            <BookOpen className="h-3.5 w-3.5 text-primary" />
+            Coverage Policies
+          </h4>
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
@@ -391,7 +434,10 @@ function CoverageTab({ data }: { data: CoverageResult }) {
       {/* Criteria assessment */}
       {data.criteria_assessment.length > 0 && (
         <div>
-          <h4 className="text-sm font-medium mb-2">Criteria Assessment</h4>
+          <h4 className="text-sm font-medium mb-2 flex items-center gap-1.5">
+            <ListChecks className="h-3.5 w-3.5 text-primary" />
+            Criteria Assessment
+          </h4>
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
@@ -426,7 +472,10 @@ function CoverageTab({ data }: { data: CoverageResult }) {
       {/* Documentation gaps */}
       {data.documentation_gaps.length > 0 && (
         <div>
-          <h4 className="text-sm font-medium mb-2">Documentation Gaps</h4>
+          <h4 className="text-sm font-medium mb-2 flex items-center gap-1.5">
+            <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+            Documentation Gaps
+          </h4>
           <div className="space-y-2">
             {data.documentation_gaps.map((gap, i) => (
               <Card
@@ -453,7 +502,10 @@ function CoverageTab({ data }: { data: CoverageResult }) {
       {/* Coverage limitations */}
       {data.coverage_limitations.length > 0 && (
         <div>
-          <h4 className="text-sm font-medium mb-1">Coverage Limitations</h4>
+          <h4 className="text-sm font-medium mb-1 flex items-center gap-1.5">
+            <Info className="h-3.5 w-3.5 text-muted-foreground" />
+            Coverage Limitations
+          </h4>
           <ul className="list-disc list-inside text-sm text-muted-foreground space-y-0.5">
             {data.coverage_limitations.map((l, i) => (
               <li key={i}>{l}</li>
@@ -465,7 +517,10 @@ function CoverageTab({ data }: { data: CoverageResult }) {
       {/* Tool results */}
       {data.tool_results.length > 0 && (
         <div>
-          <h4 className="text-sm font-medium mb-2">Tool Results</h4>
+          <h4 className="text-sm font-medium mb-2 flex items-center gap-1.5">
+            <ListChecks className="h-3.5 w-3.5 text-primary" />
+            Tool Results
+          </h4>
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
@@ -506,23 +561,27 @@ interface AgentDetailsProps {
 
 export function AgentDetails({ results }: AgentDetailsProps) {
   const tabs = [
-    { id: "compliance", label: "Compliance", data: results.compliance },
-    { id: "clinical", label: "Clinical", data: results.clinical },
-    { id: "coverage", label: "Coverage", data: results.coverage },
+    { id: "compliance", label: "Compliance", icon: ClipboardCheck, data: results.compliance },
+    { id: "clinical", label: "Clinical", icon: Stethoscope, data: results.clinical },
+    { id: "coverage", label: "Coverage", icon: Shield, data: results.coverage },
   ].filter((t) => t.data);
 
   if (tabs.length === 0) return null;
 
   return (
-    <Card>
+    <Card className="shadow-sm">
       <CardHeader>
-        <CardTitle className="text-lg">Agent Details</CardTitle>
+        <CardTitle className="text-lg flex items-center gap-2">
+          <Bot className="h-5 w-5 text-primary" />
+          Agent Details
+        </CardTitle>
       </CardHeader>
       <CardContent>
         <Tabs defaultValue={tabs[0].id}>
           <TabsList>
             {tabs.map((t) => (
-              <TabsTrigger key={t.id} value={t.id}>
+              <TabsTrigger key={t.id} value={t.id} className="flex items-center gap-1.5">
+                <t.icon className="h-3.5 w-3.5" />
                 {t.label}
               </TabsTrigger>
             ))}

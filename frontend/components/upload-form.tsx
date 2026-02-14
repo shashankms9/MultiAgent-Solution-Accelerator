@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2, Plus, X, FlaskConical } from "lucide-react";
+import { Loader2, Plus, X, FlaskConical, User, CalendarDays, Hash, CreditCard, Stethoscope, FileText, Send } from "lucide-react";
 import type { PriorAuthRequest, ReviewResponse } from "@/lib/types";
 import { submitReview } from "@/lib/api";
 import { SAMPLE_REQUEST } from "@/lib/sample-case";
@@ -88,9 +88,17 @@ export function UploadForm({ onReviewComplete }: UploadFormProps) {
   }
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle className="text-lg">New Authorization Request</CardTitle>
+    <Card className="shadow-sm">
+      <CardHeader className="flex flex-row items-center justify-between pb-2">
+        <div>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <FileText className="h-5 w-5 text-primary" />
+            New Authorization Request
+          </CardTitle>
+          <p className="text-sm text-muted-foreground mt-1">
+            Enter patient and procedure details for AI-assisted clinical review
+          </p>
+        </div>
         <Button variant="secondary" size="sm" onClick={loadSample}>
           <FlaskConical className="mr-1 h-3.5 w-3.5" />
           Load Sample Case
@@ -102,7 +110,10 @@ export function UploadForm({ onReviewComplete }: UploadFormProps) {
           {/* Row 1: Patient info */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="patient_name">Patient Name</Label>
+              <Label htmlFor="patient_name" className="flex items-center gap-1.5">
+                <User className="h-3.5 w-3.5 text-muted-foreground" />
+                Patient Name
+              </Label>
               <Input
                 id="patient_name"
                 placeholder="Jane Doe"
@@ -112,7 +123,10 @@ export function UploadForm({ onReviewComplete }: UploadFormProps) {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="patient_dob">Date of Birth</Label>
+              <Label htmlFor="patient_dob" className="flex items-center gap-1.5">
+                <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />
+                Date of Birth
+              </Label>
               <Input
                 id="patient_dob"
                 type="date"
@@ -126,7 +140,10 @@ export function UploadForm({ onReviewComplete }: UploadFormProps) {
           {/* Row 2: Provider / Insurance */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="provider_npi">Provider NPI</Label>
+              <Label htmlFor="provider_npi" className="flex items-center gap-1.5">
+                <Hash className="h-3.5 w-3.5 text-muted-foreground" />
+                Provider NPI
+              </Label>
               <Input
                 id="provider_npi"
                 placeholder="1234567890"
@@ -136,7 +153,10 @@ export function UploadForm({ onReviewComplete }: UploadFormProps) {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="insurance_id">Insurance ID (optional)</Label>
+              <Label htmlFor="insurance_id" className="flex items-center gap-1.5">
+                <CreditCard className="h-3.5 w-3.5 text-muted-foreground" />
+                Insurance ID (optional)
+              </Label>
               <Input
                 id="insurance_id"
                 placeholder="MCR-123456789A"
@@ -146,11 +166,20 @@ export function UploadForm({ onReviewComplete }: UploadFormProps) {
             </div>
           </div>
 
+          {/* Section divider: Codes */}
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
+            <div className="relative flex justify-center text-xs uppercase"><span className="bg-card px-2 text-muted-foreground">Codes</span></div>
+          </div>
+
           {/* Dynamic code arrays */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Diagnosis codes */}
             <div className="space-y-2">
-              <Label>Diagnosis Codes (ICD-10)</Label>
+              <Label className="flex items-center gap-1.5">
+                <Stethoscope className="h-3.5 w-3.5 text-muted-foreground" />
+                Diagnosis Codes (ICD-10)
+              </Label>
               {form.diagnosis_codes.map((code, i) => (
                 <div key={i} className="flex gap-1">
                   <Input
@@ -185,7 +214,10 @@ export function UploadForm({ onReviewComplete }: UploadFormProps) {
 
             {/* Procedure codes */}
             <div className="space-y-2">
-              <Label>Procedure Codes (CPT)</Label>
+              <Label className="flex items-center gap-1.5">
+                <Hash className="h-3.5 w-3.5 text-muted-foreground" />
+                Procedure Codes (CPT)
+              </Label>
               {form.procedure_codes.map((code, i) => (
                 <div key={i} className="flex gap-1">
                   <Input
@@ -219,9 +251,18 @@ export function UploadForm({ onReviewComplete }: UploadFormProps) {
             </div>
           </div>
 
+          {/* Section divider: Clinical Information */}
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
+            <div className="relative flex justify-center text-xs uppercase"><span className="bg-card px-2 text-muted-foreground">Clinical Information</span></div>
+          </div>
+
           {/* Clinical notes */}
           <div className="space-y-2">
-            <Label htmlFor="clinical_notes">Clinical Notes</Label>
+            <Label htmlFor="clinical_notes" className="flex items-center gap-1.5">
+              <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+              Clinical Notes
+            </Label>
             <Textarea
               id="clinical_notes"
               rows={5}
@@ -240,8 +281,12 @@ export function UploadForm({ onReviewComplete }: UploadFormProps) {
           )}
 
           {/* Submit */}
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          <Button type="submit" className="w-full bg-gradient-to-r from-[#0078D4] to-[#005A9E] hover:from-[#006CBD] hover:to-[#004E8C] text-white shadow-md" disabled={loading}>
+            {loading ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Send className="mr-2 h-4 w-4" />
+            )}
             {loading ? "Submitting for Review..." : "Submit for Review"}
           </Button>
         </form>

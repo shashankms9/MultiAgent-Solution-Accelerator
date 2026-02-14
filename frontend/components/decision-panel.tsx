@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, ArrowRightLeft, Download, Loader2 } from "lucide-react";
+import { Check, ArrowRightLeft, Download, Loader2, Gavel, Award, FileText } from "lucide-react";
 import { submitDecision } from "@/lib/api";
 import type { ReviewResponse, DecisionResponse } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -117,14 +117,19 @@ export function DecisionPanel({ review }: Props) {
 
   if (mode === "submitted" && decision) {
     return (
-      <Card className="mt-6 bg-muted/50">
+      <Card className="mt-6 bg-muted/30 shadow-sm">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Decision Recorded</CardTitle>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Award className="h-5 w-5 text-green-600" />
+            Decision Recorded
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Badge variant="success" className="text-sm px-3 py-1">
-            Auth #: {decision.authorization_number}
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Badge variant="success" className="text-sm px-3 py-1.5">
+              Auth #: {decision.authorization_number}
+            </Badge>
+          </div>
           <div className="text-sm">
             <span className="font-semibold">Final Recommendation:</span>{" "}
             {decision.final_recommendation.replace(/_/g, " ").toUpperCase()}
@@ -132,13 +137,19 @@ export function DecisionPanel({ review }: Props) {
               <span className="ml-2 text-amber-600">(overridden)</span>
             )}
           </div>
-          <ScrollArea className="h-[300px] rounded-md border bg-card p-4">
-            <pre className="whitespace-pre-wrap font-mono text-xs">
-              {decision.letter.body_text}
-            </pre>
-          </ScrollArea>
+          <div>
+            <p className="text-sm font-medium mb-2 flex items-center gap-1.5">
+              <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+              Notification Letter
+            </p>
+            <ScrollArea className="h-[300px] rounded-md border bg-card p-4">
+              <pre className="whitespace-pre-wrap font-mono text-xs">
+                {decision.letter.body_text}
+              </pre>
+            </ScrollArea>
+          </div>
           <div className="flex items-center gap-3">
-            <Button onClick={handleDownload}>
+            <Button onClick={handleDownload} className="bg-gradient-to-r from-[#0078D4] to-[#005A9E] hover:from-[#006CBD] hover:to-[#004E8C] text-white shadow-sm">
               <Download className="mr-2 h-4 w-4" />
               Download Letter
             </Button>
@@ -153,9 +164,12 @@ export function DecisionPanel({ review }: Props) {
 
   if (mode === "override") {
     return (
-      <Card className="mt-6 bg-muted/50">
+      <Card className="mt-6 bg-muted/30 shadow-sm">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Override Recommendation</CardTitle>
+          <CardTitle className="text-base flex items-center gap-2">
+            <ArrowRightLeft className="h-5 w-5 text-amber-500" />
+            Override Recommendation
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
@@ -225,9 +239,12 @@ export function DecisionPanel({ review }: Props) {
   }
 
   return (
-    <Card className="mt-6 bg-muted/50">
+    <Card className="mt-6 bg-muted/30 shadow-sm">
       <CardHeader className="pb-3">
-        <CardTitle className="text-base">Reviewer Decision</CardTitle>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Gavel className="h-5 w-5 text-primary" />
+          Reviewer Decision
+        </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">

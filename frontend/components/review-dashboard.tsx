@@ -8,6 +8,20 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ConfidenceBar } from "@/components/confidence-bar";
 import { AgentDetails } from "@/components/agent-details";
 import { DecisionPanel } from "@/components/decision-panel";
+import {
+  CheckCircle2,
+  ShieldAlert,
+  Scale,
+  AlertTriangle,
+  FileWarning,
+  BookOpen,
+  ScrollText,
+  ClipboardList,
+  TrendingUp,
+  Database,
+  Clock,
+  Info,
+} from "lucide-react";
 
 interface ReviewDashboardProps {
   review: ReviewResponse;
@@ -17,20 +31,24 @@ export function ReviewDashboard({ review }: ReviewDashboardProps) {
   return (
     <div className="mt-8 space-y-6">
       {/* Recommendation header */}
-      <Card>
+      <Card className="shadow-sm border-l-4 border-l-primary">
         <CardHeader>
           <div className="flex flex-wrap items-center gap-3">
-            <CardTitle className="text-lg">Review Result</CardTitle>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <ClipboardList className="h-5 w-5 text-primary" />
+              Review Result
+            </CardTitle>
             <Badge
               variant={
                 review.recommendation === "approve" ? "success" : "warning"
               }
+              className="text-sm px-3 py-1"
             >
               {review.recommendation === "approve"
                 ? "Recommend Approve"
                 : "Pend for Review"}
             </Badge>
-            <Badge variant="outline">{review.confidence_level}</Badge>
+            <Badge variant="outline" className="text-sm">{review.confidence_level}</Badge>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -48,9 +66,10 @@ export function ReviewDashboard({ review }: ReviewDashboardProps) {
 
       {/* Tool checks */}
       {review.tool_results.length > 0 && (
-        <Card>
+        <Card className="shadow-sm">
           <CardHeader>
-            <CardTitle className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
+            <CardTitle className="text-sm font-medium uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+              <CheckCircle2 className="h-4 w-4" />
               Verification Checks
             </CardTitle>
           </CardHeader>
@@ -78,16 +97,18 @@ export function ReviewDashboard({ review }: ReviewDashboardProps) {
       {/* Coverage criteria */}
       {(review.coverage_criteria_met.length > 0 ||
         review.coverage_criteria_not_met.length > 0) && (
-        <Card>
+        <Card className="shadow-sm">
           <CardHeader>
-            <CardTitle className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
+            <CardTitle className="text-sm font-medium uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+              <Scale className="h-4 w-4" />
               Coverage Criteria
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {review.coverage_criteria_met.length > 0 && (
               <div>
-                <p className="text-sm font-medium text-green-700 mb-1">
+                <p className="text-sm font-medium text-green-700 mb-1 flex items-center gap-1.5">
+                  <CheckCircle2 className="h-4 w-4" />
                   Criteria Met
                 </p>
                 <ul className="list-disc list-inside text-sm text-muted-foreground space-y-0.5">
@@ -99,7 +120,8 @@ export function ReviewDashboard({ review }: ReviewDashboardProps) {
             )}
             {review.coverage_criteria_not_met.length > 0 && (
               <div>
-                <p className="text-sm font-medium text-red-700 mb-1">
+                <p className="text-sm font-medium text-red-700 mb-1 flex items-center gap-1.5">
+                  <ShieldAlert className="h-4 w-4" />
                   Criteria Not Met
                 </p>
                 <ul className="list-disc list-inside text-sm text-muted-foreground space-y-0.5">
@@ -116,6 +138,7 @@ export function ReviewDashboard({ review }: ReviewDashboardProps) {
       {/* Missing documentation */}
       {review.missing_documentation.length > 0 && (
         <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
           <AlertTitle>Missing Documentation</AlertTitle>
           <AlertDescription>
             <ul className="list-disc list-inside mt-1 space-y-0.5">
@@ -129,9 +152,10 @@ export function ReviewDashboard({ review }: ReviewDashboardProps) {
 
       {/* Documentation gaps */}
       {review.documentation_gaps.length > 0 && (
-        <Card>
+        <Card className="shadow-sm">
           <CardHeader>
-            <CardTitle className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
+            <CardTitle className="text-sm font-medium uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+              <FileWarning className="h-4 w-4" />
               Documentation Gaps
             </CardTitle>
           </CardHeader>
@@ -156,9 +180,10 @@ export function ReviewDashboard({ review }: ReviewDashboardProps) {
 
       {/* Policy references */}
       {review.policy_references.length > 0 && (
-        <Card>
+        <Card className="shadow-sm">
           <CardHeader>
-            <CardTitle className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
+            <CardTitle className="text-sm font-medium uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+              <BookOpen className="h-4 w-4" />
               Policy References
             </CardTitle>
           </CardHeader>
@@ -174,9 +199,10 @@ export function ReviewDashboard({ review }: ReviewDashboardProps) {
 
       {/* Clinical rationale */}
       {review.clinical_rationale && (
-        <Card>
+        <Card className="shadow-sm">
           <CardHeader>
-            <CardTitle className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
+            <CardTitle className="text-sm font-medium uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+              <ScrollText className="h-4 w-4" />
               Clinical Rationale
             </CardTitle>
           </CardHeader>
@@ -198,50 +224,51 @@ export function ReviewDashboard({ review }: ReviewDashboardProps) {
 
       {/* Audit trail */}
       {review.audit_trail && (
-        <Card>
+        <Card className="shadow-sm bg-muted/30">
           <CardHeader>
-            <CardTitle className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
+            <CardTitle className="text-sm font-medium uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+              <Database className="h-4 w-4" />
               Audit Trail
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-3">
+            <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
               <div>
-                <p className="font-medium">Review Started</p>
-                <p className="text-muted-foreground">
+                <p className="font-medium flex items-center gap-1.5"><Clock className="h-3.5 w-3.5 text-muted-foreground" />Review Started</p>
+                <p className="text-muted-foreground ml-5">
                   {review.audit_trail.review_started}
                 </p>
               </div>
               <div>
-                <p className="font-medium">Review Completed</p>
-                <p className="text-muted-foreground">
+                <p className="font-medium flex items-center gap-1.5"><Clock className="h-3.5 w-3.5 text-muted-foreground" />Review Completed</p>
+                <p className="text-muted-foreground ml-5">
                   {review.audit_trail.review_completed}
                 </p>
               </div>
               <div>
-                <p className="font-medium">Criteria Met</p>
-                <p className="text-muted-foreground">
+                <p className="font-medium flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-muted-foreground" />Criteria Met</p>
+                <p className="text-muted-foreground ml-5">
                   {review.audit_trail.criteria_met_count}
                 </p>
               </div>
               <div>
-                <p className="font-medium">Extraction Confidence</p>
+                <p className="font-medium flex items-center gap-1.5"><TrendingUp className="h-3.5 w-3.5 text-muted-foreground" />Extraction Confidence</p>
                 <ConfidenceBar
                   value={review.audit_trail.extraction_confidence}
-                  className="w-32"
+                  className="w-32 ml-5"
                 />
               </div>
               <div>
-                <p className="font-medium">Assessment Confidence</p>
+                <p className="font-medium flex items-center gap-1.5"><TrendingUp className="h-3.5 w-3.5 text-muted-foreground" />Assessment Confidence</p>
                 <ConfidenceBar
                   value={review.audit_trail.assessment_confidence}
-                  className="w-32"
+                  className="w-32 ml-5"
                 />
               </div>
               {review.audit_trail.data_sources.length > 0 && (
                 <div className="col-span-full">
-                  <p className="font-medium mb-1">Data Sources</p>
-                  <div className="flex flex-wrap gap-1">
+                  <p className="font-medium mb-1 flex items-center gap-1.5"><Database className="h-3.5 w-3.5 text-muted-foreground" />Data Sources</p>
+                  <div className="flex flex-wrap gap-1 ml-5">
                     {review.audit_trail.data_sources.map((src, i) => (
                       <Badge key={i} variant="outline" className="text-xs">
                         {src}
@@ -259,9 +286,10 @@ export function ReviewDashboard({ review }: ReviewDashboardProps) {
       {review.disclaimer && (
         <>
           <Separator />
-          <p className="text-xs text-muted-foreground italic px-1">
-            {review.disclaimer}
-          </p>
+          <div className="flex items-start gap-2 px-1">
+            <Info className="h-3.5 w-3.5 mt-0.5 shrink-0 text-muted-foreground" />
+            <p className="text-xs text-muted-foreground italic">{review.disclaimer}</p>
+          </div>
         </>
       )}
     </div>
