@@ -419,6 +419,8 @@ prior-auth-maf/
 │   └── app/
 │       ├── main.py                       # FastAPI app, CORS, router mounts (review + decision)
 │       ├── config.py                     # Settings (API keys, MCP endpoints)
+│       ├── patches/
+│       │   └── __init__.py               # Windows Claude SDK patches (CMD bypass, API creds, model mapping)
 │       ├── agents/
 │       │   ├── __init__.py               # Exports run_multi_agent_review + store functions
 │       │   ├── _parse.py                 # Shared JSON response parser
@@ -796,6 +798,61 @@ async with mcp_tool:
 ---
 
 ## Technical Notes
+
+### Windows Claude SDK patches (`app/patches/__init__.py`)
+
+On Windows, the Claude Agent SDK encounters three issues when spawning the
+Claude Code CLI as a subprocess. The `app/patches/__init__.py` module fixes
+all three, applied automatically at server startup in `main.py`. The patches
+are idempotent and safe on all platforms (they detect platform/environment
+before activating).
+
+**Patch 1 — `.CMD` batch file bypass:**
+
+On Windows, the Claude Code CLI is installed as a `.CMD` batch file wrapper
+(e.g., `claude.CMD`). When Python's `subprocess` module runs a `.CMD` file,
+it routes through `cmd.exe /c`, which interprets newlines and special
+characters (`|`, `&`, `<`, `>`) inside `--system-prompt` arguments as
+command separators. This breaks all agent invocations because the system
+prompts contain multi-line instructions with pipe characters.
+
+**Fix:** Monkey-patches `SubprocessCLITransport._build_command` to replace
+the `.CMD` wrapper with a direct `node.exe cli.js` invocation, bypassing
+`cmd.exe` entirely.
+
+**Patch 2 — API credential override:**
+
+When running inside a Claude Code editor session (e.g., VS Code), the
+environment inherits a local-proxy `ANTHROPIC_API_KEY` and
+`ANTHROPIC_BASE_URL` that only work for the parent editor process. The SDK
+subprocess inherits these invalid credentials, resulting in empty responses
+(cost $0, `tokenSource: 'none'`).
+
+**Fix:** Overrides `ANTHROPIC_API_KEY` and `ANTHROPIC_BASE_URL` with the
+real Azure Foundry credentials from the `.env` file
+(`AZURE_FOUNDRY_API_KEY` / `AZURE_FOUNDRY_ENDPOINT`).
+
+**Patch 3 — Model mapping:**
+
+The Claude Agent SDK's `ClaudeAgentSettings` reads the model from the
+`CLAUDE_AGENT_MODEL` environment variable (not `CLAUDE_MODEL`). Without
+this mapping, the CLI defaults to `claude-sonnet-4-5-20250929`, which may
+not be available on Azure Foundry endpoints.
+
+**Fix:** Maps `CLAUDE_MODEL` from `.env` to `CLAUDE_AGENT_MODEL` so the
+SDK uses the correct model (e.g., `claude-opus-4-5`).
+
+**When these patches activate:**
+
+| Patch | Activates when |
+|-------|---------------|
+| CMD bypass | `os.name == "nt"` and `shutil.which("claude")` returns a `.CMD` file |
+| API credentials | `AZURE_FOUNDRY_API_KEY` is set in the environment |
+| Model mapping | `CLAUDE_MODEL` is set in the environment |
+
+On Linux/macOS or in Docker containers (where the CLI is bundled in the
+`claude-agent-sdk` wheel as a native binary), none of these patches
+activate.
 
 ### MCP header injection
 
@@ -1265,6 +1322,88 @@ az containerapp create \
 > **Note:** Update the frontend `nginx.conf` to proxy `/api` to the backend
 > Container App's internal FQDN instead of `http://backend:8000` when
 > deploying to Azure Container Apps.
+
+---
+
+## Troubleshooting
+
+### "Failed to start Claude SDK client: Failed to start Claude Code:"
+
+All three agents fail with an empty error message on Windows.
+
+**Cause:** The Claude Code CLI is installed as a `.CMD` batch file wrapper.
+When the SDK spawns it as a subprocess, `cmd.exe` mangles newlines and
+special characters in the `--system-prompt` argument.
+
+**Fix:** The `app/patches/__init__.py` module patches this automatically.
+Make sure you are running the **latest code** — restart the uvicorn server
+after pulling updates:
+
+```bash
+cd backend
+uvicorn app.main:app --reload
+```
+
+Verify the patches are applied by checking the server log for:
+```
+INFO:app.patches:Applied Windows CLI patch: ...node.EXE ...cli.js (bypassing .CMD wrapper)
+```
+
+### Agents return empty responses (cost $0)
+
+Agents connect successfully but produce no output.
+
+**Cause:** When running inside a Claude Code editor session (VS Code), the
+environment contains a local-proxy API key that doesn't work for child
+processes.
+
+**Fix:** Ensure `AZURE_FOUNDRY_API_KEY` and `AZURE_FOUNDRY_ENDPOINT` are
+set in `backend/.env`. The patches module overrides the inherited proxy
+credentials with the real ones. Check for this log line:
+
+```
+INFO:app.patches:Set ANTHROPIC_API_KEY from AZURE_FOUNDRY_API_KEY
+```
+
+### "Failed to proxy" / ECONNREFUSED on port 8000
+
+The frontend shows a proxy error when submitting a review.
+
+**Cause:** The backend server is not running, or is running on a different
+port.
+
+**Fix:** Start the backend server:
+
+```bash
+cd backend
+uvicorn app.main:app --reload
+```
+
+If port 8000 is occupied, start on another port and update the frontend:
+
+```bash
+# Backend on port 8001
+uvicorn app.main:app --reload --port 8001
+
+# Create frontend/.env.local
+echo "API_PROXY_TARGET=http://localhost:8001" > frontend/.env.local
+
+# Restart the frontend dev server
+cd frontend
+npm run dev
+```
+
+### Port stuck after killing server (Windows)
+
+After killing a server process, the port remains in LISTENING state with a
+zombie PID.
+
+**Cause:** Windows TCP socket lingering — the socket stays in the kernel
+even after the process exits.
+
+**Fix:** Wait 2-4 minutes for the socket to clear, or use a different port
+(see above). Restarting the terminal or rebooting also clears zombie
+sockets.
 
 ---
 
