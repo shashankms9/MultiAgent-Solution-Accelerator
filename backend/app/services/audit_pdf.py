@@ -80,6 +80,7 @@ def _section_heading(pdf: FPDF, number: int, title: str) -> None:
 
 def _kv(pdf: FPDF, key: str, value: str, bold_value: bool = False) -> None:
     """Render a key-value pair."""
+    pdf.set_x(10)  # Reset to left margin
     pdf.set_font("Helvetica", "B", 9)
     pdf.cell(50, 6, f"{key}:")
     pdf.set_font("Helvetica", "B" if bold_value else "", 9)
@@ -90,10 +91,10 @@ def _kv(pdf: FPDF, key: str, value: str, bold_value: bool = False) -> None:
 def _bullet(pdf: FPDF, text: str) -> None:
     """Render a bullet point."""
     pdf.set_font("Helvetica", "", 9)
-    x = pdf.get_x()
+    pdf.set_x(10)  # Reset to left margin
     pdf.cell(5, 5, "-")
     pdf.multi_cell(0, 5, _safe_str(text))
-    pdf.set_x(x)
+    pdf.set_x(10)  # Reset after multi_cell
 
 
 def _decision_badge(pdf: FPDF, recommendation: str) -> None:
@@ -486,6 +487,7 @@ def generate_audit_justification_pdf(
             if isinstance(g, dict):
                 critical = g.get("critical", False)
                 label = "[CRITICAL]" if critical else "[Non-critical]"
+                pdf.set_x(10)  # Reset to left margin before each gap
                 pdf.set_font("Helvetica", "B", 9)
                 if critical:
                     pdf.set_text_color(*_RED_TEXT)
@@ -499,7 +501,7 @@ def generate_audit_justification_pdf(
                 if g.get("request"):
                     pdf.set_x(40)
                     pdf.set_font("Helvetica", "I", 8)
-                    pdf.multi_cell(0, 4, f"Action: {g['request']}")
+                    pdf.multi_cell(0, 4, _safe_str(f"Action: {g['request']}"))
                     pdf.set_font("Helvetica", "", 9)
 
         for m in missing:
