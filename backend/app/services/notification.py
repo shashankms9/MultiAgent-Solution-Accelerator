@@ -9,7 +9,7 @@ import io
 import threading
 from datetime import date, timedelta
 
-from fpdf import FPDF
+from fpdf import FPDF, XPos, YPos
 
 _counter_lock = threading.Lock()
 _counter = 0
@@ -139,7 +139,7 @@ def generate_pend_letter(
     for item in missing_documentation:
         missing_items.append(f"  - {item}")
     for gap in documentation_gaps:
-        what = gap.get("what", "")
+        what = gap.get("what", "") or gap.get("description", "")
         request_text = gap.get("request", "")
         critical = gap.get("critical", False)
         label = "REQUIRED" if critical else "Requested"
@@ -232,7 +232,8 @@ class _LetterPDF(FPDF):
     def header(self) -> None:
         self.set_font("Helvetica", "B", 10)
         self.set_text_color(100, 100, 100)
-        self.cell(0, 6, "PRIOR AUTHORIZATION -- UTILIZATION MANAGEMENT", align="C")
+        self.cell(0, 6, "PRIOR AUTHORIZATION -- UTILIZATION MANAGEMENT",
+                  align="C", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         self.ln(4)
         self.set_draw_color(0, 100, 180)
         self.set_line_width(0.5)
@@ -243,12 +244,13 @@ class _LetterPDF(FPDF):
         self.set_y(-20)
         self.set_font("Helvetica", "I", 7)
         self.set_text_color(150, 150, 150)
-        self.cell(0, 4, "AI-ASSISTED DRAFT -- REVIEW REQUIRED", align="C")
+        self.cell(0, 4, "AI-ASSISTED DRAFT -- REVIEW REQUIRED",
+                  align="C", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         self.ln(3)
         self.cell(
             0, 4,
             f"Ref: {self._auth_number}  |  Page {self.page_no()}/{{nb}}",
-            align="C",
+            align="C", new_x=XPos.LMARGIN, new_y=YPos.NEXT,
         )
 
 
@@ -287,7 +289,8 @@ def generate_letter_pdf(letter_dict: dict) -> str:
 
     pdf.set_font("Helvetica", "B", 14)
     pdf.set_text_color(0, 0, 0)
-    pdf.cell(0, 12, title_text, align="C", fill=True)
+    pdf.cell(0, 12, title_text, align="C", fill=True,
+             new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.ln(8)
 
     # --- Disclaimer warning banner ---
@@ -300,7 +303,7 @@ def generate_letter_pdf(letter_dict: dict) -> str:
         "All recommendations are drafts requiring human clinical review. "
         "Coverage policies reflect Medicare LCDs/NCDs only. "
         "Commercial and Medicare Advantage plans may differ.",
-        fill=True,
+        fill=True, new_x=XPos.LMARGIN, new_y=YPos.NEXT,
     )
     pdf.set_text_color(0, 0, 0)
     pdf.ln(6)
@@ -310,13 +313,13 @@ def generate_letter_pdf(letter_dict: dict) -> str:
     label = "Authorization Number" if letter_type == "approval" else "Reference Number"
     pdf.cell(55, 7, f"{label}:")
     pdf.set_font("Helvetica", "", 10)
-    pdf.cell(0, 7, auth_number)
+    pdf.cell(0, 7, auth_number, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.ln(6)
 
     pdf.set_font("Helvetica", "B", 10)
     pdf.cell(55, 7, "Date:")
     pdf.set_font("Helvetica", "", 10)
-    pdf.cell(0, 7, effective_date)
+    pdf.cell(0, 7, effective_date, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.ln(10)
 
     # --- Patient & Provider info ---
@@ -351,7 +354,8 @@ def generate_letter_pdf(letter_dict: dict) -> str:
         _section_heading(pdf, "COVERAGE POLICY REFERENCE")
         pdf.set_font("Helvetica", "", 9)
         for ref in policy_refs:
-            pdf.multi_cell(0, 5, _safe_latin1(f"  - {ref}"))
+            pdf.multi_cell(0, 5, _safe_latin1(f"  - {ref}"),
+                           new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         pdf.ln(4)
 
     # --- Authorization period (approval only) ---
@@ -366,7 +370,8 @@ def generate_letter_pdf(letter_dict: dict) -> str:
     if summary:
         _section_heading(pdf, "CLINICAL SUMMARY")
         pdf.set_font("Helvetica", "", 9)
-        pdf.multi_cell(0, 5, _safe_latin1(summary))
+        pdf.multi_cell(0, 5, _safe_latin1(summary),
+                       new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         pdf.ln(4)
 
     # --- Missing documentation (pend only) ---
@@ -377,20 +382,23 @@ def generate_letter_pdf(letter_dict: dict) -> str:
             _section_heading(pdf, "ADDITIONAL DOCUMENTATION REQUIRED")
             pdf.set_font("Helvetica", "", 9)
             for item in missing_docs:
-                pdf.multi_cell(0, 5, _safe_latin1(f"  - {item}"))
+                pdf.multi_cell(0, 5, _safe_latin1(f"  - {item}"),
+                               new_x=XPos.LMARGIN, new_y=YPos.NEXT)
             for gap in doc_gaps:
-                what = gap.get("what", "") if isinstance(gap, dict) else str(gap)
+                what = (gap.get("what", "") or gap.get("description", "")) if isinstance(gap, dict) else str(gap)
                 critical = gap.get("critical", False) if isinstance(gap, dict) else False
                 tag = "[REQUIRED]" if critical else "[Requested]"
                 pdf.set_font("Helvetica", "", 9)
-                pdf.multi_cell(0, 5, _safe_latin1(f"  - {tag} {what}"))
+                pdf.multi_cell(0, 5, _safe_latin1(f"  - {tag} {what}"),
+                               new_x=XPos.LMARGIN, new_y=YPos.NEXT)
             pdf.ln(4)
 
         if doc_deadline:
             _section_heading(pdf, "DEADLINE")
             pdf.set_font("Helvetica", "B", 9)
             pdf.set_text_color(180, 0, 0)
-            pdf.multi_cell(0, 5, f"Please submit the requested documentation by {doc_deadline}.")
+            pdf.multi_cell(0, 5, f"Please submit the requested documentation by {doc_deadline}.",
+                           new_x=XPos.LMARGIN, new_y=YPos.NEXT)
             pdf.set_text_color(0, 0, 0)
             pdf.ln(4)
 
@@ -398,7 +406,8 @@ def generate_letter_pdf(letter_dict: dict) -> str:
     if appeal_rights:
         _section_heading(pdf, "APPEAL RIGHTS")
         pdf.set_font("Helvetica", "", 9)
-        pdf.multi_cell(0, 5, _safe_latin1(appeal_rights))
+        pdf.multi_cell(0, 5, _safe_latin1(appeal_rights),
+                       new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         pdf.ln(4)
 
     # --- Terms (approval only) ---
@@ -411,16 +420,18 @@ def generate_letter_pdf(letter_dict: dict) -> str:
             "the authorization period. Services must be rendered within the "
             "effective dates. This authorization does not guarantee payment. "
             "Payment is subject to eligibility verification at the time of service.",
+            new_x=XPos.LMARGIN, new_y=YPos.NEXT,
         )
         pdf.ln(4)
 
     # --- Closing ---
     pdf.ln(6)
     pdf.set_font("Helvetica", "", 10)
-    pdf.cell(0, 6, "Sincerely,")
+    pdf.cell(0, 6, "Sincerely,", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.ln(8)
     pdf.set_font("Helvetica", "B", 10)
-    pdf.cell(0, 6, "Utilization Management Department")
+    pdf.cell(0, 6, "Utilization Management Department",
+             new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
     # --- Disclaimer watermark bar ---
     pdf.ln(12)
@@ -433,7 +444,7 @@ def generate_letter_pdf(letter_dict: dict) -> str:
         "Medicare LCDs/NCDs only. If this review is for a commercial or Medicare "
         "Advantage plan, payer-specific policies were not applied. All decisions "
         "require human clinical review before finalization.",
-        fill=True,
+        fill=True, new_x=XPos.LMARGIN, new_y=YPos.NEXT,
     )
 
     # --- Output to base64 ---
@@ -447,7 +458,7 @@ def _section_heading(pdf: FPDF, text: str) -> None:
     """Render a bold section heading with underline."""
     pdf.set_font("Helvetica", "B", 10)
     pdf.set_text_color(0, 70, 140)
-    pdf.cell(0, 7, text)
+    pdf.cell(0, 7, text, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.ln(2)
     pdf.set_draw_color(0, 70, 140)
     pdf.set_line_width(0.3)
@@ -461,7 +472,7 @@ def _kv(pdf: FPDF, key: str, value: str) -> None:
     pdf.set_font("Helvetica", "B", 9)
     pdf.cell(55, 6, f"{key}:")
     pdf.set_font("Helvetica", "", 9)
-    pdf.cell(0, 6, _safe_latin1(value))
+    pdf.cell(0, 6, _safe_latin1(value), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.ln(5)
 
 

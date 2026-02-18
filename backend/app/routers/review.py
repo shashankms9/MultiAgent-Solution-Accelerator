@@ -289,6 +289,14 @@ def _sanitize_agent_data(data: dict) -> dict:
         if key in result and not isinstance(result[key], bool):
             result[key] = _coerce_bool(result[key])
 
+    # Field aliasing — agents may use different names for the same field
+    # DocumentationGap: "what" is required but agent may return "description"
+    if "description" in result and "what" not in result:
+        result["what"] = result.pop("description")
+    # CriterionAssessment: "criterion" is required but agent may use "name"
+    if "name" in result and "criterion" not in result:
+        result["criterion"] = result.pop("name")
+
     # Recursively sanitize known nested dicts
     for nested_key in ("clinical_extraction", "provider_verification"):
         if nested_key in result and isinstance(result[nested_key], dict):
