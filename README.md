@@ -881,6 +881,110 @@ procedure codes relevant to your specialty. The curated table provides
 informational descriptions in the audit trail — it does not block
 unknown codes (format validation is the only hard gate).
 
+### Add a new MCP server
+
+The application is designed so new MCP servers (e.g., a CPT validator, drug
+formulary, pharmacy benefits, or any custom healthcare data source) can be
+added without modifying the core orchestration or frontend. Six files need
+changes, following the same pattern used by the existing five servers:
+
+**Step 1 — Configuration** (`backend/app/config.py`):
+
+Add an environment variable for the MCP server URL:
+
+```python
+class Settings:
+    # ... existing settings ...
+    MCP_CPT_VALIDATOR: str = os.getenv(
+        "MCP_CPT_VALIDATOR", "https://mcp.example.com/cpt-validator/mcp"
+    )
+```
+
+**Step 2 — Environment files** (`backend/.env` and `backend/.env.example`):
+
+```bash
+# CPT Validator MCP — validates CPT/HCPCS codes against CMS fee schedule
+MCP_CPT_VALIDATOR=https://mcp.example.com/cpt-validator/mcp
+```
+
+**Step 3 — Server registry** (`backend/app/tools/mcp_config.py`):
+
+Register the server config and add it to the appropriate agent group:
+
+```python
+CPT_SERVER = {"type": "http", "url": settings.MCP_CPT_VALIDATOR, "headers": _HEADERS}
+
+# Add to the agent group that should use this server
+CLINICAL_MCP_SERVERS = {
+    "icd10-codes": ICD10_SERVER,
+    "pubmed": PUBMED_SERVER,
+    "clinical-trials": TRIALS_SERVER,
+    "cpt-validator": CPT_SERVER,           # new
+}
+```
+
+The server name key (e.g., `"cpt-validator"`) determines the tool name prefix:
+tools from this server will be named `mcp__cpt-validator__<tool_name>`.
+
+**Step 4 — Agent allowed tools** (e.g., `backend/app/agents/clinical_agent.py`):
+
+Add the new tool names to `allowed_tools` in _both_ skills mode and prompt
+mode branches. Tool names follow the format `mcp__<server-name>__<tool-name>`:
+
+```python
+"allowed_tools": [
+    "Skill",
+    # ... existing tools ...
+    "mcp__cpt-validator__validate_cpt",    # new
+    "mcp__cpt-validator__lookup_cpt",      # new
+],
+```
+
+You discover actual tool names by connecting to the MCP server or reading its
+documentation. In prompt mode, also add usage instructions to the inline
+instructions string so the agent knows when and how to call the new tools.
+
+**Step 5 — SKILL.md** (e.g., `backend/.claude/skills/clinical-review/SKILL.md`):
+
+Document the new tools and add execution steps:
+
+```markdown
+#### CPT Validator MCP (cpt-validator)
+- `mcp__cpt-validator__validate_cpt(code)` — Check if CPT code is valid
+- `mcp__cpt-validator__lookup_cpt(code)` — Get description and RVU value
+
+### Step N: Validate Procedure Codes
+1. Call `mcp__cpt-validator__validate_cpt(code)` for each procedure code
+2. Record validity status in output
+```
+
+**Step 6 — Orchestrator** (`backend/app/agents/orchestrator.py`):
+
+Only needed if creating an entirely new agent role. If the MCP server is added
+to an existing agent (clinical or coverage), no orchestrator changes are
+required — the agent already participates in the pipeline.
+
+If adding a new agent, register it in `run_multi_agent_review()` at the
+appropriate phase (parallel with existing agents or as a new sequential
+phase), and include its results in the synthesis prompt.
+
+**Optional — Audit PDF** (`backend/app/services/audit_pdf.py`):
+
+If the new MCP server produces data that should appear in the audit
+justification PDF, add a rendering block in the appropriate section of
+`generate_audit_justification_pdf()`.
+
+**Architecture summary:**
+
+```
+.env                    → URL configuration (swap endpoints without code changes)
+config.py               → Settings class (reads env vars)
+tools/mcp_config.py     → Server-to-agent mapping (which agent gets which servers)
+agents/<agent>.py       → Tool allowlist (security boundary)
+.claude/skills/*/SKILL.md → Usage instructions (what the agent does with the tools)
+agents/orchestrator.py  → Pipeline phases (only if adding a new agent role)
+```
+
 ### Use MCP with non-Claude models
 
 Use `MCPStreamableHTTPTool` from the Agent Framework with a custom
