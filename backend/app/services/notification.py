@@ -351,8 +351,7 @@ def generate_letter_pdf(letter_dict: dict) -> str:
         _section_heading(pdf, "COVERAGE POLICY REFERENCE")
         pdf.set_font("Helvetica", "", 9)
         for ref in policy_refs:
-            pdf.cell(6, 5, "-")
-            pdf.multi_cell(0, 5, _safe_latin1(ref))
+            pdf.multi_cell(0, 5, _safe_latin1(f"  - {ref}"))
         pdf.ln(4)
 
     # --- Authorization period (approval only) ---
@@ -378,17 +377,13 @@ def generate_letter_pdf(letter_dict: dict) -> str:
             _section_heading(pdf, "ADDITIONAL DOCUMENTATION REQUIRED")
             pdf.set_font("Helvetica", "", 9)
             for item in missing_docs:
-                pdf.cell(6, 5, "-")
-                pdf.multi_cell(0, 5, _safe_latin1(item))
+                pdf.multi_cell(0, 5, _safe_latin1(f"  - {item}"))
             for gap in doc_gaps:
                 what = gap.get("what", "") if isinstance(gap, dict) else str(gap)
                 critical = gap.get("critical", False) if isinstance(gap, dict) else False
                 tag = "[REQUIRED]" if critical else "[Requested]"
-                pdf.set_font("Helvetica", "B", 9)
-                pdf.cell(6, 5, "-")
-                pdf.cell(22, 5, tag)
                 pdf.set_font("Helvetica", "", 9)
-                pdf.multi_cell(0, 5, _safe_latin1(what))
+                pdf.multi_cell(0, 5, _safe_latin1(f"  - {tag} {what}"))
             pdf.ln(4)
 
         if doc_deadline:
