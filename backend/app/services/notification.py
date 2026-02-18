@@ -66,6 +66,8 @@ PRIOR AUTHORIZATION APPROVAL NOTIFICATION
 Authorization Number: {authorization_number}
 Date: {today.isoformat()}
 
+DECISION: ** APPROVED **
+
 Dear {provider_name} (NPI: {provider_npi}),
 
 This letter confirms that the prior authorization request for the following
@@ -171,6 +173,8 @@ PRIOR AUTHORIZATION - REQUEST FOR ADDITIONAL INFORMATION
 Reference Number: {authorization_number}
 Date: {today.isoformat()}
 
+DECISION: ** PEND FOR REVIEW **
+
 Dear {provider_name} (NPI: {provider_npi}),
 
 The prior authorization request for the following services has been PENDED
@@ -218,11 +222,28 @@ Utilization Management Department"""
 
 
 # ---------------------------------------------------------------------------
-# PDF generation
+# Color palette — consistent modern theme
 # ---------------------------------------------------------------------------
+_PRIMARY = (15, 60, 120)       # Deep navy
+_PRIMARY_LIGHT = (230, 240, 250)  # Very light blue
+_ACCENT = (0, 105, 180)        # Bright blue for links/accents
+_GREEN_BG = (22, 120, 75)      # Dark green (approval badge)
+_GREEN_LIGHT = (232, 245, 233) # Light green tint
+_AMBER_BG = (180, 120, 0)      # Dark amber (pend badge)
+_AMBER_LIGHT = (255, 248, 225) # Light amber tint
+_RED = (200, 40, 40)           # Red for critical/deadlines
+_TEXT = (33, 37, 41)           # Near-black body text
+_TEXT_LIGHT = (108, 117, 125)  # Muted secondary text
+_TEXT_MUTED = (150, 150, 150)  # Footer/watermark text
+_DIVIDER = (222, 226, 230)     # Light gray divider
+_CARD_BG = (248, 249, 250)     # Card/alternating row background
+_WHITE = (255, 255, 255)
+_WARN_BG = (255, 248, 225)     # Warning banner
+_WARN_TEXT = (133, 100, 4)     # Warning banner text
+
 
 class _LetterPDF(FPDF):
-    """Custom FPDF subclass with header/footer for PA letters."""
+    """Custom FPDF subclass for professional PA notification letters."""
 
     def __init__(self, letter_type: str, auth_number: str) -> None:
         super().__init__()
@@ -230,39 +251,55 @@ class _LetterPDF(FPDF):
         self._auth_number = auth_number
 
     def header(self) -> None:
-        self.set_font("Helvetica", "B", 10)
-        self.set_text_color(100, 100, 100)
-        self.cell(0, 6, "PRIOR AUTHORIZATION -- UTILIZATION MANAGEMENT",
-                  align="C", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-        self.ln(4)
-        self.set_draw_color(0, 100, 180)
-        self.set_line_width(0.5)
+        # Blue accent bar across the very top
+        self.set_fill_color(*_PRIMARY)
+        self.rect(0, 0, 210, 3, "F")
+
+        self.set_y(8)
+
+        # Organization name — left aligned
+        self.set_font("Helvetica", "B", 9)
+        self.set_text_color(*_PRIMARY)
+        self.cell(0, 5, "UTILIZATION MANAGEMENT DEPARTMENT",
+                  new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+        # Subtitle
+        self.set_font("Helvetica", "", 7)
+        self.set_text_color(*_TEXT_LIGHT)
+        self.cell(0, 4, "Prior Authorization Program",
+                  new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+        # Thin divider
+        self.ln(3)
+        self.set_draw_color(*_DIVIDER)
+        self.set_line_width(0.3)
         self.line(10, self.get_y(), 200, self.get_y())
-        self.ln(6)
+        self.ln(5)
 
     def footer(self) -> None:
-        self.set_y(-20)
-        self.set_font("Helvetica", "I", 7)
-        self.set_text_color(150, 150, 150)
-        self.cell(0, 4, "AI-ASSISTED DRAFT -- REVIEW REQUIRED",
-                  align="C", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        self.set_y(-18)
+        # Thin divider above footer
+        self.set_draw_color(*_DIVIDER)
+        self.set_line_width(0.2)
+        self.line(10, self.get_y(), 200, self.get_y())
         self.ln(3)
+
+        self.set_font("Helvetica", "I", 6.5)
+        self.set_text_color(*_TEXT_MUTED)
+        self.cell(0, 3.5,
+                  "AI-Assisted Draft  --  Human Clinical Review Required Before Finalization",
+                  align="C", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         self.cell(
-            0, 4,
-            f"Ref: {self._auth_number}  |  Page {self.page_no()}/{{nb}}",
+            0, 3.5,
+            f"Ref: {self._auth_number}   |   Page {self.page_no()}/{{nb}}",
             align="C", new_x=XPos.LMARGIN, new_y=YPos.NEXT,
         )
 
 
 def generate_letter_pdf(letter_dict: dict) -> str:
-    """Generate a PDF version of a notification letter and return base64-encoded bytes.
+    """Generate a professional PDF notification letter.
 
-    Args:
-        letter_dict: Dict matching the NotificationLetter schema (as returned by
-            generate_approval_letter or generate_pend_letter).
-
-    Returns:
-        Base64-encoded PDF string (suitable for JSON transport).
+    Returns base64-encoded PDF string.
     """
     letter_type = letter_dict.get("letter_type", "approval")
     auth_number = letter_dict.get("authorization_number", "")
@@ -270,150 +307,208 @@ def generate_letter_pdf(letter_dict: dict) -> str:
     provider_name = letter_dict.get("provider_name", "")
     effective_date = letter_dict.get("effective_date", "")
     expiration_date = letter_dict.get("expiration_date")
-    body_text = letter_dict.get("body_text", "")
     appeal_rights = letter_dict.get("appeal_rights")
     doc_deadline = letter_dict.get("documentation_deadline")
+
+    is_approval = letter_type == "approval"
 
     pdf = _LetterPDF(letter_type=letter_type, auth_number=auth_number)
     pdf.alias_nb_pages()
     pdf.add_page()
-    pdf.set_auto_page_break(auto=True, margin=25)
+    pdf.set_auto_page_break(auto=True, margin=22)
 
-    # --- Title ---
-    if letter_type == "approval":
-        pdf.set_fill_color(212, 237, 218)  # green tint
-        title_text = "PRIOR AUTHORIZATION APPROVAL NOTIFICATION"
+    # ── Decision status badge ──────────────────────────────────────────
+    if is_approval:
+        badge_bg = _GREEN_BG
+        badge_text = "APPROVED"
+        title_text = "Prior Authorization Approval Notification"
     else:
-        pdf.set_fill_color(255, 243, 205)  # amber tint
-        title_text = "PRIOR AUTHORIZATION -- REQUEST FOR ADDITIONAL INFORMATION"
+        badge_bg = _AMBER_BG
+        badge_text = "PEND FOR REVIEW"
+        title_text = "Prior Authorization -- Request for Additional Information"
 
+    # Title
     pdf.set_font("Helvetica", "B", 14)
-    pdf.set_text_color(0, 0, 0)
-    pdf.cell(0, 12, title_text, align="C", fill=True,
-             new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.ln(8)
+    pdf.set_text_color(*_PRIMARY)
+    pdf.cell(0, 9, title_text, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.ln(3)
 
-    # --- Disclaimer warning banner ---
-    pdf.set_fill_color(255, 243, 205)
-    pdf.set_font("Helvetica", "BI", 7)
-    pdf.set_text_color(133, 100, 4)
+    # Decision badge — centered colored pill
+    badge_w = 70
+    badge_x = (210 - badge_w) / 2
+    badge_y = pdf.get_y()
+    # Rounded rect background
+    pdf.set_fill_color(*badge_bg)
+    pdf.rect(badge_x, badge_y, badge_w, 9, "F")
+    # Small rounded corners simulated with circles
+    pdf.set_draw_color(*badge_bg)
+
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.set_text_color(*_WHITE)
+    pdf.set_xy(badge_x, badge_y)
+    pdf.cell(badge_w, 9, badge_text, align="C")
+    pdf.set_xy(10, badge_y + 9)
+    pdf.ln(6)
+
+    # ── Disclaimer warning strip ───────────────────────────────────────
+    pdf.set_fill_color(*_WARN_BG)
+    pdf.set_font("Helvetica", "I", 6.5)
+    pdf.set_text_color(*_WARN_TEXT)
     pdf.multi_cell(
-        0, 4,
-        "WARNING: AI-ASSISTED DRAFT -- REVIEW REQUIRED. "
-        "All recommendations are drafts requiring human clinical review. "
+        0, 3.5,
+        "AI-ASSISTED DRAFT: All recommendations require human clinical review. "
         "Coverage policies reflect Medicare LCDs/NCDs only. "
         "Commercial and Medicare Advantage plans may differ.",
         fill=True, new_x=XPos.LMARGIN, new_y=YPos.NEXT,
     )
-    pdf.set_text_color(0, 0, 0)
-    pdf.ln(6)
+    pdf.set_text_color(*_TEXT)
+    pdf.ln(5)
 
-    # --- Authorization / Reference number ---
-    pdf.set_font("Helvetica", "B", 10)
-    label = "Authorization Number" if letter_type == "approval" else "Reference Number"
-    pdf.cell(55, 7, f"{label}:")
-    pdf.set_font("Helvetica", "", 10)
-    pdf.cell(0, 7, auth_number, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.ln(6)
+    # ── Reference info row ─────────────────────────────────────────────
+    ref_label = "Authorization No." if is_approval else "Reference No."
+    _info_row(pdf, [
+        (ref_label, auth_number),
+        ("Date", effective_date),
+    ])
+    pdf.ln(5)
 
-    pdf.set_font("Helvetica", "B", 10)
-    pdf.cell(55, 7, "Date:")
-    pdf.set_font("Helvetica", "", 10)
-    pdf.cell(0, 7, effective_date, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.ln(10)
+    # ── Patient & Provider info cards (side by side) ───────────────────
+    card_y = pdf.get_y()
+    card_w = 90
+    gap = 10
 
-    # --- Patient & Provider info ---
-    _section_heading(pdf, "PATIENT INFORMATION")
-    _kv(pdf, "Name", patient_name)
-    _kv(pdf, "Date of Birth", letter_dict.get("patient_dob", ""))
-    insurance_id = letter_dict.get("insurance_id", "")
-    if insurance_id:
-        _kv(pdf, "Insurance ID", insurance_id)
-    pdf.ln(4)
+    # Patient card
+    _info_card(pdf, 10, card_y, card_w, "Patient Information", [
+        ("Name", patient_name),
+        ("Date of Birth", letter_dict.get("patient_dob", "")),
+        ("Insurance ID", letter_dict.get("insurance_id", "") or "Not provided"),
+    ])
 
-    _section_heading(pdf, "PROVIDER INFORMATION")
-    _kv(pdf, "Name", provider_name)
-    _kv(pdf, "NPI", letter_dict.get("provider_npi", ""))
-    pdf.ln(4)
+    # Provider card
+    _info_card(pdf, 10 + card_w + gap, card_y, card_w, "Provider Information", [
+        ("Name", provider_name),
+        ("NPI", letter_dict.get("provider_npi", "")),
+    ])
 
-    # --- Codes ---
+    # Move below the taller card
+    pdf.set_y(card_y + 38)
+
+    # ── Services table ─────────────────────────────────────────────────
     procedure_codes = letter_dict.get("procedure_codes", [])
     diagnosis_codes = letter_dict.get("diagnosis_codes", [])
     if procedure_codes or diagnosis_codes:
-        heading = "APPROVED SERVICES" if letter_type == "approval" else "REQUESTED SERVICES"
+        heading = "Approved Services" if is_approval else "Requested Services"
         _section_heading(pdf, heading)
-        if procedure_codes:
-            _kv(pdf, "Procedure Code(s)", ", ".join(procedure_codes))
-        if diagnosis_codes:
-            _kv(pdf, "Diagnosis Code(s)", ", ".join(diagnosis_codes))
-        pdf.ln(4)
 
-    # --- Policy reference ---
+        col_w = [35, 155]
+        _table_header_row(pdf, [("Type", col_w[0]), ("Code(s)", col_w[1])])
+        row_idx = 0
+        if procedure_codes:
+            _table_data_row(pdf, [
+                ("Procedure (CPT)", col_w[0]),
+                (", ".join(procedure_codes), col_w[1]),
+            ], row_idx)
+            row_idx += 1
+        if diagnosis_codes:
+            _table_data_row(pdf, [
+                ("Diagnosis (ICD-10)", col_w[0]),
+                (", ".join(diagnosis_codes), col_w[1]),
+            ], row_idx)
+        pdf.ln(5)
+
+    # ── Coverage policy references ─────────────────────────────────────
     policy_refs = letter_dict.get("policy_references", [])
     if policy_refs:
-        _section_heading(pdf, "COVERAGE POLICY REFERENCE")
-        pdf.set_font("Helvetica", "", 9)
+        _section_heading(pdf, "Coverage Policy Reference")
+        pdf.set_font("Helvetica", "", 8.5)
+        pdf.set_text_color(*_TEXT)
         for ref in policy_refs:
-            pdf.multi_cell(0, 5, _safe_latin1(f"  - {ref}"),
+            pdf.set_x(12)
+            pdf.cell(4, 5, "-")
+            pdf.multi_cell(0, 5, _safe(ref),
                            new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-        pdf.ln(4)
+        pdf.ln(3)
 
-    # --- Authorization period (approval only) ---
-    if letter_type == "approval" and expiration_date:
-        _section_heading(pdf, "AUTHORIZATION PERIOD")
-        _kv(pdf, "Effective Date", effective_date)
-        _kv(pdf, "Expiration Date", expiration_date)
-        pdf.ln(4)
+    # ── Authorization period (approval) ────────────────────────────────
+    if is_approval and expiration_date:
+        _section_heading(pdf, "Authorization Period")
+        _info_row(pdf, [
+            ("Effective Date", effective_date),
+            ("Expiration Date", expiration_date),
+        ])
+        pdf.ln(5)
 
-    # --- Clinical summary ---
+    # ── Clinical summary ───────────────────────────────────────────────
     summary = letter_dict.get("summary", "")
     if summary:
-        _section_heading(pdf, "CLINICAL SUMMARY")
+        _section_heading(pdf, "Clinical Summary")
         pdf.set_font("Helvetica", "", 9)
-        pdf.multi_cell(0, 5, _safe_latin1(summary),
+        pdf.set_text_color(*_TEXT)
+        pdf.multi_cell(0, 5, _safe(summary),
                        new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         pdf.ln(4)
 
-    # --- Missing documentation (pend only) ---
-    if letter_type == "pend":
+    # ── Additional documentation required (pend) ───────────────────────
+    if not is_approval:
         missing_docs = letter_dict.get("missing_documentation", [])
         doc_gaps = letter_dict.get("documentation_gaps", [])
         if missing_docs or doc_gaps:
-            _section_heading(pdf, "ADDITIONAL DOCUMENTATION REQUIRED")
-            pdf.set_font("Helvetica", "", 9)
+            _section_heading(pdf, "Additional Documentation Required")
+
             for item in missing_docs:
-                pdf.multi_cell(0, 5, _safe_latin1(f"  - {item}"),
-                               new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+                _bullet_item(pdf, item)
+
             for gap in doc_gaps:
                 what = (gap.get("what", "") or gap.get("description", "")) if isinstance(gap, dict) else str(gap)
                 critical = gap.get("critical", False) if isinstance(gap, dict) else False
-                tag = "[REQUIRED]" if critical else "[Requested]"
-                pdf.set_font("Helvetica", "", 9)
-                pdf.multi_cell(0, 5, _safe_latin1(f"  - {tag} {what}"),
+                tag = "REQUIRED" if critical else "Requested"
+                tag_color = _RED if critical else _AMBER_BG
+
+                pdf.set_x(12)
+                pdf.set_font("Helvetica", "B", 7)
+                pdf.set_text_color(*tag_color)
+                pdf.cell(20, 5, f"[{tag}]")
+                pdf.set_font("Helvetica", "", 8.5)
+                pdf.set_text_color(*_TEXT)
+                pdf.multi_cell(0, 5, _safe(what),
                                new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+                req = gap.get("request", "") if isinstance(gap, dict) else ""
+                if req:
+                    pdf.set_x(32)
+                    pdf.set_font("Helvetica", "I", 8)
+                    pdf.set_text_color(*_TEXT_LIGHT)
+                    pdf.multi_cell(0, 4, _safe(req),
+                                   new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+                    pdf.set_text_color(*_TEXT)
+
             pdf.ln(4)
 
+        # Deadline callout
         if doc_deadline:
-            _section_heading(pdf, "DEADLINE")
-            pdf.set_font("Helvetica", "B", 9)
-            pdf.set_text_color(180, 0, 0)
-            pdf.multi_cell(0, 5, f"Please submit the requested documentation by {doc_deadline}.",
-                           new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-            pdf.set_text_color(0, 0, 0)
+            _callout_box(
+                pdf,
+                f"DEADLINE: Please submit the requested documentation by {doc_deadline}.",
+                bg=_AMBER_LIGHT,
+                text_color=_RED,
+                bold=True,
+            )
             pdf.ln(4)
 
-    # --- Appeal rights (pend only) ---
+    # ── Appeal rights (pend) ───────────────────────────────────────────
     if appeal_rights:
-        _section_heading(pdf, "APPEAL RIGHTS")
-        pdf.set_font("Helvetica", "", 9)
-        pdf.multi_cell(0, 5, _safe_latin1(appeal_rights),
+        _section_heading(pdf, "Appeal Rights")
+        pdf.set_font("Helvetica", "", 8.5)
+        pdf.set_text_color(*_TEXT)
+        pdf.multi_cell(0, 4.5, _safe(appeal_rights),
                        new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         pdf.ln(4)
 
-    # --- Terms (approval only) ---
-    if letter_type == "approval":
-        _section_heading(pdf, "TERMS AND CONDITIONS")
+    # ── Terms and conditions (approval) ────────────────────────────────
+    if is_approval:
+        _section_heading(pdf, "Terms and Conditions")
         pdf.set_font("Helvetica", "", 8)
+        pdf.set_text_color(*_TEXT_LIGHT)
         pdf.multi_cell(
             0, 4,
             "This authorization is valid for the services described above during "
@@ -424,59 +519,187 @@ def generate_letter_pdf(letter_dict: dict) -> str:
         )
         pdf.ln(4)
 
-    # --- Closing ---
-    pdf.ln(6)
-    pdf.set_font("Helvetica", "", 10)
+    # ── Closing ────────────────────────────────────────────────────────
+    pdf.ln(3)
+    pdf.set_text_color(*_TEXT)
+    pdf.set_font("Helvetica", "", 9.5)
     pdf.cell(0, 6, "Sincerely,", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.ln(8)
-    pdf.set_font("Helvetica", "B", 10)
+    pdf.ln(6)
+    pdf.set_font("Helvetica", "B", 9.5)
     pdf.cell(0, 6, "Utilization Management Department",
              new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
-    # --- Disclaimer watermark bar ---
-    pdf.ln(12)
-    pdf.set_fill_color(255, 243, 205)
-    pdf.set_font("Helvetica", "I", 7)
-    pdf.set_text_color(133, 100, 4)
-    pdf.multi_cell(
-        0, 4,
+    # ── Bottom disclaimer bar ──────────────────────────────────────────
+    pdf.ln(10)
+    _callout_box(
+        pdf,
         "DISCLAIMER: This is an AI-assisted draft. Coverage policies reflect "
         "Medicare LCDs/NCDs only. If this review is for a commercial or Medicare "
         "Advantage plan, payer-specific policies were not applied. All decisions "
         "require human clinical review before finalization.",
-        fill=True, new_x=XPos.LMARGIN, new_y=YPos.NEXT,
+        bg=_WARN_BG,
+        text_color=_WARN_TEXT,
+        bold=False,
+        font_size=6.5,
     )
 
-    # --- Output to base64 ---
+    # ── Output to base64 ──────────────────────────────────────────────
     buf = io.BytesIO()
     pdf.output(buf)
     pdf_bytes = buf.getvalue()
     return base64.b64encode(pdf_bytes).decode("ascii")
 
 
+# ---------------------------------------------------------------------------
+# Layout helpers
+# ---------------------------------------------------------------------------
+
 def _section_heading(pdf: FPDF, text: str) -> None:
-    """Render a bold section heading with underline."""
+    """Render a section heading with subtle left accent bar."""
+    y = pdf.get_y()
+
+    # Left accent bar
+    pdf.set_fill_color(*_ACCENT)
+    pdf.rect(10, y, 2, 7, "F")
+
+    # Heading text
+    pdf.set_x(15)
     pdf.set_font("Helvetica", "B", 10)
-    pdf.set_text_color(0, 70, 140)
+    pdf.set_text_color(*_PRIMARY)
     pdf.cell(0, 7, text, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.ln(2)
-    pdf.set_draw_color(0, 70, 140)
-    pdf.set_line_width(0.3)
+
+    # Light underline
+    pdf.set_draw_color(*_DIVIDER)
+    pdf.set_line_width(0.2)
     pdf.line(10, pdf.get_y(), 200, pdf.get_y())
     pdf.ln(4)
-    pdf.set_text_color(0, 0, 0)
+    pdf.set_text_color(*_TEXT)
 
 
-def _kv(pdf: FPDF, key: str, value: str) -> None:
-    """Render a key-value pair."""
-    pdf.set_font("Helvetica", "B", 9)
-    pdf.cell(55, 6, f"{key}:")
-    pdf.set_font("Helvetica", "", 9)
-    pdf.cell(0, 6, _safe_latin1(value), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.ln(5)
+def _info_row(pdf: FPDF, pairs: list[tuple[str, str]]) -> None:
+    """Render key-value pairs in a horizontal row with card background."""
+    y = pdf.get_y()
+    col_w = 190 / len(pairs)
+
+    pdf.set_fill_color(*_CARD_BG)
+    pdf.rect(10, y, 190, 14, "F")
+
+    for i, (label, value) in enumerate(pairs):
+        x = 10 + i * col_w + 4
+        # Label
+        pdf.set_xy(x, y + 1)
+        pdf.set_font("Helvetica", "", 7)
+        pdf.set_text_color(*_TEXT_LIGHT)
+        pdf.cell(col_w - 8, 4, label)
+        # Value
+        pdf.set_xy(x, y + 6)
+        pdf.set_font("Helvetica", "B", 9.5)
+        pdf.set_text_color(*_TEXT)
+        pdf.cell(col_w - 8, 6, _safe(value))
+
+    pdf.set_y(y + 14)
 
 
-def _safe_latin1(value) -> str:
+def _info_card(
+    pdf: FPDF,
+    x: float, y: float, w: float,
+    title: str,
+    rows: list[tuple[str, str]],
+) -> None:
+    """Render a bordered info card at a specific position."""
+    row_h = 8
+    title_h = 8
+    h = title_h + len(rows) * row_h + 4
+
+    # Card border
+    pdf.set_draw_color(*_DIVIDER)
+    pdf.set_line_width(0.3)
+    pdf.rect(x, y, w, h)
+
+    # Title bar
+    pdf.set_fill_color(*_PRIMARY_LIGHT)
+    pdf.rect(x, y, w, title_h, "F")
+
+    pdf.set_xy(x + 4, y + 1)
+    pdf.set_font("Helvetica", "B", 8)
+    pdf.set_text_color(*_PRIMARY)
+    pdf.cell(w - 8, 6, title)
+
+    # Data rows
+    for i, (label, value) in enumerate(rows):
+        ry = y + title_h + 2 + i * row_h
+        pdf.set_xy(x + 4, ry)
+        pdf.set_font("Helvetica", "", 7)
+        pdf.set_text_color(*_TEXT_LIGHT)
+        pdf.cell(28, 4, f"{label}:")
+        pdf.set_font("Helvetica", "B" if i == 0 else "", 8.5)
+        pdf.set_text_color(*_TEXT)
+        pdf.cell(w - 36, 4, _safe(value))
+
+
+def _table_header_row(pdf: FPDF, columns: list[tuple[str, int]]) -> None:
+    """Render a table header with primary background."""
+    pdf.set_fill_color(*_PRIMARY_LIGHT)
+    pdf.set_font("Helvetica", "B", 8)
+    pdf.set_text_color(*_PRIMARY)
+    for label, width in columns:
+        pdf.cell(width, 7, label, border=0, fill=True)
+    pdf.ln()
+    # Underline
+    pdf.set_draw_color(*_ACCENT)
+    pdf.set_line_width(0.4)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.set_text_color(*_TEXT)
+
+
+def _table_data_row(
+    pdf: FPDF,
+    cells: list[tuple[str, int]],
+    row_index: int,
+) -> None:
+    """Render a table data row with alternating background."""
+    if row_index % 2 == 1:
+        pdf.set_fill_color(*_CARD_BG)
+    else:
+        pdf.set_fill_color(*_WHITE)
+
+    pdf.set_font("Helvetica", "", 8.5)
+    for text, width in cells:
+        pdf.cell(width, 6.5, _safe(text)[:80], border=0, fill=True)
+    pdf.ln()
+
+
+def _bullet_item(pdf: FPDF, text: str) -> None:
+    """Render a simple bullet point."""
+    pdf.set_x(12)
+    pdf.set_font("Helvetica", "", 8.5)
+    pdf.set_text_color(*_TEXT)
+    pdf.cell(4, 5, "-")
+    pdf.multi_cell(0, 5, _safe(text),
+                   new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+
+def _callout_box(
+    pdf: FPDF,
+    text: str,
+    bg: tuple,
+    text_color: tuple,
+    bold: bool = False,
+    font_size: float = 8,
+) -> None:
+    """Render a full-width callout/banner box."""
+    pdf.set_fill_color(*bg)
+    pdf.set_font("Helvetica", "BI" if bold else "I", font_size)
+    pdf.set_text_color(*text_color)
+    pdf.multi_cell(
+        0, 4,
+        _safe(text),
+        fill=True, new_x=XPos.LMARGIN, new_y=YPos.NEXT,
+    )
+    pdf.set_text_color(*_TEXT)
+
+
+def _safe(value) -> str:
     """Convert value to a Latin-1-safe string for Helvetica rendering."""
     if value is None:
         return "N/A"
@@ -491,3 +714,7 @@ def _safe_latin1(value) -> str:
     s = s.replace("\u2026", "...")  # ellipsis
     s = s.encode("latin-1", errors="replace").decode("latin-1")
     return s
+
+
+# Keep backward compatibility alias
+_safe_latin1 = _safe

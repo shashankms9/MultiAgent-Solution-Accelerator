@@ -217,9 +217,10 @@ async def get_all_reviews():
 def _safe_parse(model_class, data):
     """Attempt to parse a dict into a Pydantic model, return None on failure.
 
-    Two-stage approach:
-    1. Sanitize (field aliasing + type coercion) then validate
-    2. Minimal fallback (preserves agent_name and error fields)
+    Three-stage approach:
+    1. Sanitize (field aliasing + type coercion) then validate whole model
+    2. Field-by-field fallback — try each field individually, skip failures
+    3. Minimal fallback (preserves agent_name and error fields)
 
     Sanitization always runs first because models use defaults for all fields,
     so direct validation would succeed with empty values for misnamed fields.
@@ -232,10 +233,49 @@ def _safe_parse(model_class, data):
         sanitized = _sanitize_agent_data(data)
         return model_class.model_validate(sanitized)
     except Exception as e:
-        logger.warning("Parse %s failed: %s", model_class.__name__, e)
+        logger.warning("Parse %s failed (stage 1): %s", model_class.__name__, e)
         logger.info("Parse %s data keys: %s", model_class.__name__, list(data.keys()))
 
-    # Fallback: minimal model with error info
+    # Stage 2: Field-by-field fallback — try each field individually
+    # This preserves data that parses correctly even if one field is bad
+    try:
+        sanitized = _sanitize_agent_data(data)
+        model_fields = set(model_class.model_fields.keys())
+        good_fields = {}
+
+        for field_name in model_fields:
+            if field_name not in sanitized:
+                continue
+            try:
+                # Test if this single field validates by itself
+                test_data = {field_name: sanitized[field_name]}
+                model_class.model_validate(test_data)
+                good_fields[field_name] = sanitized[field_name]
+            except Exception:
+                logger.info(
+                    "Parse %s: field '%s' failed individually, skipping (type=%s)",
+                    model_class.__name__, field_name,
+                    type(sanitized[field_name]).__name__,
+                )
+
+        if good_fields:
+            try:
+                result = model_class.model_validate(good_fields)
+                # Count how many meaningful fields we got vs total available
+                provided = len([k for k in model_fields if k in sanitized])
+                kept = len(good_fields)
+                if provided > 0 and kept < provided:
+                    logger.info(
+                        "Parse %s: field-by-field kept %d/%d fields",
+                        model_class.__name__, kept, provided,
+                    )
+                return result
+            except Exception as e2:
+                logger.warning("Parse %s field-by-field reassembly failed: %s", model_class.__name__, e2)
+    except Exception as e:
+        logger.warning("Parse %s field-by-field fallback failed: %s", model_class.__name__, e)
+
+    # Stage 3: Minimal fallback with error info
     try:
         minimal = {}
         if "agent_name" in data:
@@ -301,6 +341,20 @@ def _sanitize_agent_data(data: dict) -> dict:
                 result["what"] = result.pop(alias)
                 break
 
+    # ChecklistItem: "item" is expected but agent may use "name" or "check"
+    # Only match if status is a checklist-specific value (not pass/fail/MET which are tool/criterion values)
+    if "item" not in result:
+        checklist_statuses = {"complete", "incomplete", "missing", "present", "absent"}
+        status_val = str(result.get("status", "")).lower()
+        is_checklist_like = status_val in checklist_statuses and not any(
+            k in result for k in ("confidence", "evidence", "met", "notes", "tool_name")
+        )
+        if is_checklist_like:
+            for alias in ("name", "check", "requirement", "label"):
+                if alias in result:
+                    result["item"] = result.pop(alias)
+                    break
+
     # CriterionAssessment: "criterion" — only remap "name" if dict looks like
     # a criterion (has confidence/evidence/met fields, not a tool result)
     if "criterion" not in result:
@@ -314,11 +368,14 @@ def _sanitize_agent_data(data: dict) -> dict:
                 break
 
     # ToolResult: "tool_name" — only remap "name" if dict looks like a tool
-    # result (has detail or status but NOT criterion-specific fields)
+    # result (has detail or status but NOT criterion-specific or provider-specific fields)
     if "tool_name" not in result:
-        is_tool_like = "detail" in result or ("status" in result and not any(
-            k in result for k in ("confidence", "evidence", "met", "notes")
-        ))
+        is_provider_like = any(k in result for k in ("npi", "specialty", "provider_name"))
+        is_tool_like = not is_provider_like and (
+            "detail" in result or ("status" in result and not any(
+                k in result for k in ("confidence", "evidence", "met", "notes")
+            ))
+        )
         aliases = ["tool"]
         if is_tool_like:
             aliases.insert(0, "name")  # Only use "name" for tool-like dicts
@@ -348,12 +405,30 @@ def _sanitize_agent_data(data: dict) -> dict:
                 result["nct_id"] = str(result.pop(alias))
                 break
 
+    # ClinicalResult: "clinical_summary" may be returned as "summary"
+    # (only alias if this looks like a clinical result, not a top-level synthesis)
+    if "clinical_summary" not in result and "summary" in result:
+        has_clinical_fields = any(
+            k in result for k in (
+                "diagnosis_validation", "clinical_extraction",
+                "literature_support", "clinical_trials",
+            )
+        )
+        if has_clinical_fields:
+            result["clinical_summary"] = result.pop("summary")
+
     # Recursively sanitize known nested dicts
+    # Also handle case where agent returns a string instead of a dict
     for nested_key in ("clinical_extraction", "provider_verification"):
         if nested_key in result and isinstance(result[nested_key], dict):
             result[nested_key] = _sanitize_agent_data(result[nested_key])
+        elif nested_key in result and isinstance(result[nested_key], str):
+            # Agent returned a string summary instead of structured dict — discard
+            # so the model uses its default (None)
+            del result[nested_key]
 
     # Recursively sanitize known list-of-dict fields
+    # Also filter out non-dict items (agents sometimes put strings in lists of objects)
     for list_key in ("diagnosis_validation", "criteria_assessment",
                      "documentation_gaps", "coverage_policies",
                      "literature_support", "clinical_trials",
@@ -362,7 +437,11 @@ def _sanitize_agent_data(data: dict) -> dict:
             result[list_key] = [
                 _sanitize_agent_data(item) if isinstance(item, dict) else item
                 for item in result[list_key]
+                if isinstance(item, dict)
             ]
+        elif list_key in result and isinstance(result[list_key], dict):
+            # Agent returned a single dict instead of a list — wrap it
+            result[list_key] = [_sanitize_agent_data(result[list_key])]
 
     return result
 
