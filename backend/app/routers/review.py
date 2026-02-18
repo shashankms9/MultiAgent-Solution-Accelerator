@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 import uuid
 
 from fastapi import APIRouter, HTTPException, Request
@@ -24,6 +25,8 @@ from app.agents.orchestrator import (
     get_review,
     list_reviews,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -212,10 +215,134 @@ async def get_all_reviews():
 
 
 def _safe_parse(model_class, data):
-    """Attempt to parse a dict into a Pydantic model, return None on failure."""
-    if not data or isinstance(data, str):
+    """Attempt to parse a dict into a Pydantic model, return None on failure.
+
+    Three-stage approach:
+    1. Direct validation (fast path for well-formed agent data)
+    2. Sanitized validation (handles common type mismatches from LLM-generated JSON)
+    3. Minimal fallback (preserves agent_name and error fields)
+    """
+    if not data or not isinstance(data, dict):
         return None
     try:
-        return model_class(**data) if isinstance(data, dict) else None
+        return model_class.model_validate(data)
+    except Exception as e:
+        logger.warning("Parse %s failed (stage 1): %s", model_class.__name__, e)
+
+    # Stage 2: sanitize and retry
+    try:
+        sanitized = _sanitize_agent_data(data)
+        return model_class.model_validate(sanitized)
+    except Exception as e:
+        logger.warning("Parse %s failed (stage 2 sanitized): %s", model_class.__name__, e)
+
+    # Stage 3: minimal model with error info
+    try:
+        minimal = {}
+        if "agent_name" in data:
+            minimal["agent_name"] = str(data["agent_name"])
+        if "error" in data:
+            minimal["error"] = str(data["error"])
+        else:
+            minimal["error"] = "Agent data could not be parsed into expected format"
+        return model_class.model_validate(minimal)
     except Exception:
         return None
+
+
+def _sanitize_agent_data(data: dict) -> dict:
+    """Sanitize agent result dict to handle common type mismatches.
+
+    LLM agents sometimes return:
+    - list[str] fields as a single string, or list[dict] instead of list[str]
+    - bool fields as "Yes"/"No"/"true"/"false" strings
+    - int fields as "85%" strings or 0.85 floats
+    - evidence fields as strings instead of lists
+
+    This function normalizes these before Pydantic validation.
+    """
+    if not isinstance(data, dict):
+        return data
+
+    result = dict(data)
+
+    # Fields that should be list[str] — coerce str→[str] and dict→str(dict)
+    _STR_LIST_FIELDS = {
+        "prior_treatments", "severity_indicators", "functional_limitations",
+        "diagnostic_findings", "missing_items", "additional_info_requests",
+        "coverage_criteria_met", "coverage_criteria_not_met",
+        "policy_references", "coverage_limitations", "evidence",
+        "data_sources",
+    }
+    for key in _STR_LIST_FIELDS:
+        if key in result:
+            result[key] = _coerce_str_list(result[key])
+
+    # Fields that should be int — coerce "85%" or 0.85 float
+    for key in ("extraction_confidence", "confidence", "extraction_confidence",
+                "assessment_confidence"):
+        if key in result and not isinstance(result[key], int):
+            result[key] = _coerce_int(result[key])
+
+    # Fields that should be bool — coerce "Yes"/"true"/etc.
+    for key in ("valid", "billable", "critical", "relevant", "met"):
+        if key in result and not isinstance(result[key], bool):
+            result[key] = _coerce_bool(result[key])
+
+    # Recursively sanitize known nested dicts
+    for nested_key in ("clinical_extraction", "provider_verification"):
+        if nested_key in result and isinstance(result[nested_key], dict):
+            result[nested_key] = _sanitize_agent_data(result[nested_key])
+
+    # Recursively sanitize known list-of-dict fields
+    for list_key in ("diagnosis_validation", "criteria_assessment",
+                     "documentation_gaps", "coverage_policies",
+                     "literature_support", "clinical_trials",
+                     "checklist", "tool_results"):
+        if list_key in result and isinstance(result[list_key], list):
+            result[list_key] = [
+                _sanitize_agent_data(item) if isinstance(item, dict) else item
+                for item in result[list_key]
+            ]
+
+    return result
+
+
+def _coerce_str_list(value) -> list:
+    """Coerce value to list[str]."""
+    if isinstance(value, str):
+        return [value] if value else []
+    if isinstance(value, list):
+        return [
+            str(item) if not isinstance(item, str) else item
+            for item in value
+        ]
+    return []
+
+
+def _coerce_int(value) -> int:
+    """Coerce value to int, handling strings like '85%' and floats."""
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        # Likely 0.0-1.0 scale: convert to 0-100
+        if 0.0 < value <= 1.0:
+            return round(value * 100)
+        return round(value)
+    if isinstance(value, str):
+        digits = "".join(c for c in value if c.isdigit() or c == ".")
+        if digits:
+            try:
+                return round(float(digits))
+            except ValueError:
+                pass
+    return 0
+
+
+def _coerce_bool(value) -> bool:
+    """Coerce various truthy/falsy values to bool."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.lower() in ("true", "yes", "1", "pass", "met", "active")
+    return bool(value)

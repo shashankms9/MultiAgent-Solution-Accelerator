@@ -232,7 +232,7 @@ class _LetterPDF(FPDF):
     def header(self) -> None:
         self.set_font("Helvetica", "B", 10)
         self.set_text_color(100, 100, 100)
-        self.cell(0, 6, "PRIOR AUTHORIZATION — UTILIZATION MANAGEMENT", align="C")
+        self.cell(0, 6, "PRIOR AUTHORIZATION -- UTILIZATION MANAGEMENT", align="C")
         self.ln(4)
         self.set_draw_color(0, 100, 180)
         self.set_line_width(0.5)
@@ -243,7 +243,7 @@ class _LetterPDF(FPDF):
         self.set_y(-20)
         self.set_font("Helvetica", "I", 7)
         self.set_text_color(150, 150, 150)
-        self.cell(0, 4, "AI-ASSISTED DRAFT — REVIEW REQUIRED", align="C")
+        self.cell(0, 4, "AI-ASSISTED DRAFT -- REVIEW REQUIRED", align="C")
         self.ln(3)
         self.cell(
             0, 4,
@@ -283,12 +283,27 @@ def generate_letter_pdf(letter_dict: dict) -> str:
         title_text = "PRIOR AUTHORIZATION APPROVAL NOTIFICATION"
     else:
         pdf.set_fill_color(255, 243, 205)  # amber tint
-        title_text = "PRIOR AUTHORIZATION — REQUEST FOR ADDITIONAL INFORMATION"
+        title_text = "PRIOR AUTHORIZATION -- REQUEST FOR ADDITIONAL INFORMATION"
 
     pdf.set_font("Helvetica", "B", 14)
     pdf.set_text_color(0, 0, 0)
     pdf.cell(0, 12, title_text, align="C", fill=True)
-    pdf.ln(10)
+    pdf.ln(8)
+
+    # --- Disclaimer warning banner ---
+    pdf.set_fill_color(255, 243, 205)
+    pdf.set_font("Helvetica", "BI", 7)
+    pdf.set_text_color(133, 100, 4)
+    pdf.multi_cell(
+        0, 4,
+        "WARNING: AI-ASSISTED DRAFT -- REVIEW REQUIRED. "
+        "All recommendations are drafts requiring human clinical review. "
+        "Coverage policies reflect Medicare LCDs/NCDs only. "
+        "Commercial and Medicare Advantage plans may differ.",
+        fill=True,
+    )
+    pdf.set_text_color(0, 0, 0)
+    pdf.ln(6)
 
     # --- Authorization / Reference number ---
     pdf.set_font("Helvetica", "B", 10)
