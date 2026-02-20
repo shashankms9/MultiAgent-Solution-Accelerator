@@ -887,8 +887,38 @@ async def run_multi_agent_review(
         "detail": cpt_validation["summary"],
     })
 
-    all_tool_results.extend(clinical_result.get("tool_results", []))
-    all_tool_results.extend(coverage_result.get("tool_results", []))
+    # Collect agent-reported tool_results and normalize status values.
+    # Agents (LLMs) may use "success"/"error" instead of the frontend's
+    # expected "pass"/"fail"/"warning" vocabulary.
+    _STATUS_MAP = {
+        "success": "pass",
+        "completed": "pass",
+        "found": "pass",
+        "verified": "pass",
+        "valid": "pass",
+        "error": "fail",
+        "failed": "fail",
+        "invalid": "fail",
+        "not_found": "warning",
+        "partial": "warning",
+        "info": "warning",
+    }
+
+    def _normalize_tool_result(tr: dict) -> dict:
+        raw = str(tr.get("status", "warning")).lower().strip()
+        return {
+            "tool_name": tr.get("tool_name", "unknown"),
+            "status": _STATUS_MAP.get(raw, raw),  # map or keep as-is
+            "detail": tr.get("detail", ""),
+        }
+
+    for tr in clinical_result.get("tool_results", []):
+        if isinstance(tr, dict):
+            all_tool_results.append(_normalize_tool_result(tr))
+
+    for tr in coverage_result.get("tool_results", []):
+        if isinstance(tr, dict):
+            all_tool_results.append(_normalize_tool_result(tr))
 
     # If agents didn't report tool_results, synthesize from available data
     existing_tools = {t.get("tool_name", "") for t in all_tool_results}

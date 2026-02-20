@@ -1573,6 +1573,7 @@ mechanisms mitigate this:
 | Result validation | `_validate_agent_result()` in orchestrator | Checks that each agent result contains its expected top-level keys (e.g., `diagnosis_validation`, `clinical_extraction`, `clinical_summary` for Clinical). |
 | Automatic retry | `_safe_run()` in orchestrator | If validation detects missing keys, the agent is retried once (`_MAX_AGENT_RETRIES = 1`). Logs a warning with the missing keys before retrying. |
 | SSE status warnings | Phase completion events | Reports `"status": "warning"` with details about missing keys in the SSE progress stream, so the frontend can surface incomplete results. |
+| Tool result status normalization | `_normalize_tool_result()` in orchestrator | Agents (LLMs) may use non-standard status values like `"success"` instead of the frontend's expected `"pass"`. The normalizer maps variants (`success`/`completed`/`found`/`verified` → `pass`, `error`/`failed` → `fail`, `not_found`/`partial` → `warning`) so the Verification Checks panel renders correct colors (green/yellow/red). |
 
 Agent `max_turns` configuration:
 

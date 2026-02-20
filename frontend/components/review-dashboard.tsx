@@ -102,10 +102,11 @@ export function ReviewDashboard({ review }: ReviewDashboardProps) {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-col gap-2">
               {review.tool_results.map((t, i) => (
                 <Badge
                   key={i}
+                  className="whitespace-normal text-left justify-start max-w-full"
                   variant={
                     t.status === "pass"
                       ? "success"
