@@ -215,6 +215,9 @@ Interchange) workflows.
 
 ### How it works
 
+![Prior Authorization Review — Application Interface](images/interface.png)
+*The Prior Authorization Review interface showing the PA request form, real-time agent progress tracking, review dashboard with agent details, and the human-in-the-loop decision panel.*
+
 1. A clinical reviewer fills in the PA request form in the Next.js frontend,
    or clicks **"Load Sample Case"** to populate a demo case (CT-guided
    lung biopsy: ICD-10 R91.1/J18.9/R05.9, CPT 31628, NPI 1720180003).
