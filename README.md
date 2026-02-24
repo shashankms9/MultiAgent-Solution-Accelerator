@@ -25,6 +25,101 @@ confidence scoring, progressive gate evaluation, and structured audit trails.
 
 ---
 
+## What Is Prior Authorization?
+
+**Prior authorization (PA)** — also called pre-certification or pre-approval — is a
+utilization management process required by health insurance payers before they agree
+to cover a prescribed medical service, procedure, or medication. The treating
+provider must demonstrate that the requested service is **medically necessary** and
+meets the payer's **coverage policy criteria** before care is delivered.
+
+### The PA Workflow (Manual Process Today)
+
+```
+Provider submits        Payer intake team         Clinical reviewer          Decision
+PA request        →     checks completeness  →    evaluates medical    →    Approve /
+(fax, portal, EDI)      (demographics, codes,     necessity against         Pend /
+                         clinical notes)           coverage policies         Deny
+                                                   (NCDs, LCDs, payer
+                                                    medical policies)
+      ↑                                                    │
+      └────────── Request additional info ←────────────────┘
+                  (avg 2-3 round-trips)
+```
+
+### Industry Challenges
+
+| Challenge | Impact |
+|-----------|--------|
+| **Volume** | U.S. providers submit **~400 million PA requests per year** (AMA, 2024). Large payers process 50,000–200,000+ requests daily. |
+| **Manual effort** | Each request takes **20–45 minutes** of clinician and administrative time for data gathering, policy lookup, and documentation. |
+| **Turnaround delays** | Average PA decision takes **5–14 business days**, with complex cases exceeding 30 days. Delays impact patient outcomes and provider revenue. |
+| **Administrative burden** | 88% of physicians report that PA burdens are "high" or "extremely high" (AMA 2023 survey). Practices spend an average of **13 hours/week** on PA. |
+| **Inconsistency** | Manual reviews are subject to reviewer variability, policy interpretation differences, and incomplete documentation assessment. |
+| **Regulatory pressure** | CMS Interoperability and Prior Authorization Final Rule (CMS-0057-F) mandates electronic PA for Medicare Advantage, Medicaid, and CHIP plans by 2026, with response time limits of 72 hours (urgent) and 7 days (standard). |
+
+### How This Solution Addresses These Challenges
+
+This solution uses a **multi-agent AI architecture** to automate and accelerate the
+PA review process while keeping a **human-in-the-loop** for final decisions:
+
+#### 1. Automated Documentation Completeness Check
+The **Compliance Agent** validates all required documentation in seconds — patient
+demographics, provider credentials, diagnosis and procedure codes, clinical notes
+quality — eliminating the manual intake triage step and immediately identifying
+missing information before clinical review begins.
+
+#### 2. AI-Powered Clinical Evidence Extraction
+The **Clinical Reviewer Agent** extracts and structures clinical data from
+unstructured notes, validates ICD-10 diagnosis codes against the official code
+database, searches biomedical literature (PubMed) and clinical trials for
+supporting evidence, and produces a structured clinical profile with per-field
+confidence scoring — work that takes a human reviewer 15–30 minutes done in
+under a minute.
+
+#### 3. Automated Coverage Policy Matching
+The **Coverage Agent** verifies provider credentials against the CMS NPI registry,
+searches applicable National and Local Coverage Determinations (NCDs/LCDs), and
+maps each policy criterion to the clinical evidence with auditable
+MET/NOT_MET/INSUFFICIENT assessments — replacing manual policy lookup and
+cross-referencing that accounts for much of the review time.
+
+#### 4. Transparent, Auditable Decision Synthesis
+The **Synthesis Agent** evaluates a gate-based decision rubric (Provider → Codes →
+Medical Necessity) with a weighted confidence formula, producing a recommendation
+with full audit trail — every data source consulted, every criterion assessed,
+every confidence score computed — providing the transparency regulators and
+accreditors require.
+
+#### 5. Human-in-the-Loop Decision Panel
+The AI produces a **draft recommendation** — never a final decision. Human
+clinical reviewers can **accept** or **override** the AI recommendation with
+documented rationale. Override reasoning flows through to notification letters
+and audit justification documents, maintaining regulatory compliance and
+clinical accountability.
+
+#### 6. Regulatory-Ready Output Artifacts
+The system generates **notification letters** (approval or pend, as formatted PDF),
+**audit justification documents** (8-section professionally formatted PDF with
+color-coded criteria tables and confidence bars), and structured data suitable for
+integration with existing PA management systems and EDI (Electronic Data
+Interchange) workflows.
+
+### Adoption at Scale
+
+| Capability | How It Enables Scale |
+|-----------|---------------------|
+| **Parallel agent execution** | Compliance and Clinical agents run concurrently, reducing wall-clock time from 20+ minutes to under 2 minutes per case. |
+| **Skills-based architecture** | Agent behaviors are defined in SKILL.md files — domain experts can update clinical rules, policy thresholds, and confidence parameters without code changes. |
+| **MCP-based data access** | Standardized Model Context Protocol (MCP) servers for NPI, ICD-10, CMS Coverage, PubMed, and Clinical Trials provide modular, swappable data integrations. |
+| **Configurable decision policy** | LENIENT mode (APPROVE/PEND) ships as default; STRICT mode (adding DENY) is a configuration toggle — adaptable to different payer risk profiles. |
+| **Container-ready deployment** | Docker Compose for dev, with a clear path to Azure Container Apps, Kubernetes, or any container orchestration platform for production workloads. |
+| **Stateless API design** | Each review is independent — horizontally scalable behind a load balancer. Production deployments swap the in-memory store for a persistent database (Azure Cosmos DB, PostgreSQL). |
+| **Audit and compliance** | Every review produces a complete audit trail with data source attribution, confidence breakdowns, and human decision documentation — ready for regulatory audits and accreditation reviews. |
+| **Multi-payer extensibility** | The architecture supports adding payer-specific policy engines, commercial coverage databases, and Medicare Advantage plan rules alongside the existing Medicare NCD/LCD coverage. |
+
+---
+
 ## Multi-Agent Architecture
 
 ```
