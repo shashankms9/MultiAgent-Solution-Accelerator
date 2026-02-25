@@ -178,6 +178,8 @@ async def create_clinical_agent() -> ClaudeAgent:
 
     if settings.USE_SKILLS:
         return ClaudeAgent(
+            id="clinical-reviewer-agent",
+            name="Clinical Reviewer Agent",
             instructions=(
                 "You are a Clinical Reviewer Agent. "
                 "Use your clinical-review Skill to validate codes, "
@@ -211,6 +213,8 @@ async def create_clinical_agent() -> ClaudeAgent:
             },
         )
     return ClaudeAgent(
+        id="clinical-reviewer-agent",
+        name="Clinical Reviewer Agent",
         instructions=CLINICAL_INSTRUCTIONS,
         default_options={
             "max_turns": 15,

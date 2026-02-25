@@ -110,6 +110,8 @@ async def create_compliance_agent() -> ClaudeAgent:
 
     if settings.USE_SKILLS:
         return ClaudeAgent(
+            id="compliance-agent",
+            name="Compliance Validation Agent",
             instructions=(
                 "You are a Compliance Validation Agent. "
                 "Use your compliance-review Skill to validate documentation completeness. "
@@ -126,6 +128,8 @@ async def create_compliance_agent() -> ClaudeAgent:
             },
         )
     return ClaudeAgent(
+        id="compliance-agent",
+        name="Compliance Validation Agent",
         instructions=COMPLIANCE_INSTRUCTIONS,
         default_options={
             "max_turns": 5,

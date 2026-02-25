@@ -196,6 +196,8 @@ async def create_coverage_agent() -> ClaudeAgent:
 
     if settings.USE_SKILLS:
         return ClaudeAgent(
+            id="coverage-assessment-agent",
+            name="Coverage Assessment Agent",
             instructions=(
                 "You are a Coverage Assessment Agent. "
                 "Use your coverage-assessment Skill to verify provider credentials, "
@@ -226,6 +228,8 @@ async def create_coverage_agent() -> ClaudeAgent:
             },
         )
     return ClaudeAgent(
+        id="coverage-assessment-agent",
+        name="Coverage Assessment Agent",
         instructions=COVERAGE_INSTRUCTIONS,
         default_options={
             "max_turns": 15,

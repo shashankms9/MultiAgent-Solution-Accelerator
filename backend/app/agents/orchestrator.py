@@ -1158,6 +1158,8 @@ async def _run_synthesis(
 
     if settings.USE_SKILLS:
         agent = ClaudeAgent(
+            id="synthesis-decision-agent",
+            name="Synthesis Decision Agent",
             instructions=(
                 "You are a Synthesis Decision Agent. "
                 "Use your synthesis-decision Skill to evaluate the gate-based "
@@ -1176,6 +1178,8 @@ async def _run_synthesis(
         )
     else:
         agent = ClaudeAgent(
+            id="synthesis-decision-agent",
+            name="Synthesis Decision Agent",
             instructions=SYNTHESIS_INSTRUCTIONS,
             default_options={
                 "max_turns": 5,

@@ -2118,6 +2118,32 @@ all tracing code uses a no-op fallback so there is zero runtime impact.
 - **Performance** — percentile latency breakdown by phase (P1 parallel
   vs. P2 coverage vs. P3 synthesis)
 
+### Microsoft Foundry Agent Registration
+
+All four agents are configured with stable OpenTelemetry `id` and `name`
+parameters, ready for registration as external agents in Microsoft AI Foundry:
+
+| Agent ID | Display Name | File |
+|----------|-------------|------|
+| `compliance-agent` | Compliance Validation Agent | `compliance_agent.py` |
+| `clinical-reviewer-agent` | Clinical Reviewer Agent | `clinical_agent.py` |
+| `coverage-assessment-agent` | Coverage Assessment Agent | `coverage_agent.py` |
+| `synthesis-decision-agent` | Synthesis Decision Agent | `orchestrator.py` |
+
+These IDs are set on both skills-mode and prompt-mode code paths, so they
+emit consistent `gen_ai.agent.id` and `gen_ai.agent.name` span attributes
+regardless of configuration.
+
+**To register in Foundry:**
+
+1. Register each agent as a custom external agent in the
+   [Azure AI Foundry portal](https://ai.azure.com/) using the agent IDs above
+   (see [Register a custom agent](https://learn.microsoft.com/en-us/azure/ai-foundry/control-plane/register-custom-agent))
+2. Ensure the Application Insights resource is linked to your Foundry project
+3. Set `APPLICATION_INSIGHTS_CONNECTION_STRING` in `backend/.env`
+4. Agent spans will appear in the Foundry portal's **Tracing** tab,
+   correlated by agent ID
+
 ---
 
 ## Docker Deployment
