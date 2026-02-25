@@ -2120,8 +2120,50 @@ all tracing code uses a no-op fallback so there is zero runtime impact.
 
 ### Microsoft Foundry Agent Registration
 
+The agents built in this solution run **outside** of Foundry — in your own
+FastAPI backend, on Azure Container Apps, or any compute environment. By
+registering them as **custom external agents** in Foundry Control Plane, you
+gain centralized observability, governance, and fleet management without
+changing where or how the agents run.
+
+Foundry uses **Azure API Management (APIM)** as a gateway to proxy requests
+to your agents. After registration, Foundry generates a new URL for each
+agent. Clients use this Foundry-generated URL instead of your original
+endpoint, enabling Foundry to control access, monitor activity, apply rate
+limits, and block/unblock agents.
+
+```
+Clients → Foundry (APIM gateway) → Your FastAPI backend (agents)
+                │
+                ▼
+         Application Insights  ← OpenTelemetry spans (gen_ai.agent.id)
+                │
+         ┌──────┴──────┐
+         ▼              ▼
+  Azure Portal     Foundry Portal
+  (App Insights)   (Tracing tab)
+```
+
+Telemetry is written **once** to Application Insights. Both the Azure Portal
+(full OpenTelemetry view) and the Foundry Portal (agent-centric Tracing tab)
+read from the same data — no duplication or extra cost.
+
+#### Why register in Foundry
+
+- **Centralized fleet view** — see all agents (Foundry-native and external)
+  in one dashboard with runs, error rates, and usage metrics
+- **Governance** — block/unblock agents that misbehave, without redeploying
+- **Proxy & rate limiting** — Foundry's APIM gateway controls access and
+  applies rate limits to agent endpoints
+- **Agent-correlated traces** — Foundry matches incoming spans by
+  `gen_ai.agent.id` to your registered agents, providing a purpose-built
+  trace viewer for agent workflows
+- **Admin portal link** — optionally link back to your own admin UI
+
+#### Agent IDs
+
 All four agents are configured with stable OpenTelemetry `id` and `name`
-parameters, ready for registration as external agents in Microsoft AI Foundry:
+parameters on both skills-mode and prompt-mode code paths:
 
 | Agent ID | Display Name | File |
 |----------|-------------|------|
@@ -2130,19 +2172,72 @@ parameters, ready for registration as external agents in Microsoft AI Foundry:
 | `coverage-assessment-agent` | Coverage Assessment Agent | `coverage_agent.py` |
 | `synthesis-decision-agent` | Synthesis Decision Agent | `orchestrator.py` |
 
-These IDs are set on both skills-mode and prompt-mode code paths, so they
-emit consistent `gen_ai.agent.id` and `gen_ai.agent.name` span attributes
-regardless of configuration.
+These emit consistent `gen_ai.agent.id` and `gen_ai.agent.name` span
+attributes regardless of configuration.
 
-**To register in Foundry:**
+#### Prerequisites
 
-1. Register each agent as a custom external agent in the
-   [Azure AI Foundry portal](https://ai.azure.com/) using the agent IDs above
-   (see [Register a custom agent](https://learn.microsoft.com/en-us/azure/ai-foundry/control-plane/register-custom-agent))
-2. Ensure the Application Insights resource is linked to your Foundry project
-3. Set `APPLICATION_INSIGHTS_CONNECTION_STRING` in `backend/.env`
-4. Agent spans will appear in the Foundry portal's **Tracing** tab,
-   correlated by agent ID
+Before registering, ensure:
+
+1. **Foundry project** — create one at [ai.azure.com](https://ai.azure.com/)
+   if you don't have one
+2. **AI Gateway** — configure an AI gateway in your Foundry resource
+   (Operate → Admin → AI Gateway tab). Required for Foundry to proxy
+   requests via APIM
+3. **Application Insights** — link an App Insights resource to your
+   Foundry project (Operate → Admin → select project → Connected
+   resources → add Application Insights). **The same App Insights
+   resource must be used in both the Foundry project and the
+   `APPLICATION_INSIGHTS_CONNECTION_STRING` in your backend `.env`**
+4. **Deployed backend** — your FastAPI backend must be deployed
+   and reachable from the network where your Foundry resource runs
+   (public endpoint or private network). `localhost` will not work
+
+#### Registration steps
+
+Follow the full walkthrough at
+[Register and manage custom agents](https://learn.microsoft.com/en-us/azure/ai-foundry/control-plane/register-custom-agent):
+
+1. Go to [Microsoft Foundry portal](https://ai.azure.com/) → Operate →
+   Overview → **Register agent**
+2. Fill in the registration form:
+
+   | Field | Value |
+   |-------|-------|
+   | **Agent URL** | Your deployed backend URL (e.g., `https://your-app.azurecontainerapps.io/api/review/stream`) |
+   | **Protocol** | HTTP |
+   | **OpenTelemetry Agent ID** | Use one of the agent IDs above (e.g., `compliance-agent`) |
+   | **Agent name** | Display name (e.g., "Compliance Validation Agent") |
+   | **Project** | Select your Foundry project (must have AI gateway enabled) |
+   | **Description** | Agent role description |
+   | **Admin portal URL** | (Optional) link to your admin dashboard |
+
+3. Save — Foundry generates a **new proxy URL** for the agent
+4. Update clients to use the **Foundry-generated URL** instead of the
+   original endpoint. The original authentication still applies
+5. Repeat for each agent you want to register
+
+#### After registration
+
+- View agents: Operate → Assets → filter by Source: **Custom**
+- View traces: select an agent → **Traces** section shows each HTTP call
+  and OpenTelemetry spans (tool calls, model interactions, durations)
+- Block/unblock: select an agent → **Update status** → Block/Unblock
+
+#### Troubleshooting traces
+
+If traces don't appear in Foundry
+([docs](https://learn.microsoft.com/en-us/azure/ai-foundry/control-plane/register-custom-agent#troubleshoot-traces)):
+
+- Verify the Foundry project has Application Insights configured. If you
+  added App Insights **after** registering the agent, unregister and
+  re-register — it doesn't auto-update
+- Verify your backend sends traces to the **same** Application Insights
+  resource that the Foundry project uses
+- Verify instrumentation complies with OpenTelemetry GenAI semantic
+  conventions (MAF handles this automatically)
+- Verify spans include `gen_ai.agent.id` matching the registered
+  OpenTelemetry Agent ID
 
 ---
 
