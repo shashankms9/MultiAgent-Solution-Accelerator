@@ -11,7 +11,9 @@ The frontend is built with **Next.js** (static export), **shadcn/ui**, and
 Includes a human-in-the-loop **Decision Panel** for accept/override workflow,
 **PDF notification letter generation** (approval and pend via `fpdf2`),
 **CPT/HCPCS format validation**, **real-time agent progress streaming** (SSE),
-**audit justification PDF download** (color-coded, professional format), and a **sample case** for demo use.
+**audit justification PDF download** (color-coded, professional format),
+**Azure Application Insights observability** (OpenTelemetry traces with custom
+phase spans), and a **sample case** for demo use.
 
 Incorporates best practices from the
 [Anthropic prior-auth-review-skill](https://github.com/anthropics/healthcare/tree/main/prior-auth-review-skill):
@@ -651,7 +653,8 @@ prior-auth-maf/
 │   │       └── output-formats.md             # JSON output schemas for all 4 agents
 │   └── app/
 │       ├── main.py                       # FastAPI app, CORS, router mounts (review + decision)
-│       ├── config.py                     # Settings (API keys, MCP endpoints)
+│       ├── config.py                     # Settings (API keys, MCP endpoints, App Insights)
+│       ├── observability.py              # Azure Application Insights + OpenTelemetry setup
 │       ├── patches/
 │       │   └── __init__.py               # Windows Claude SDK patches (CMD bypass, API creds, model mapping, event loop)
 │       ├── agents/
@@ -760,6 +763,9 @@ CLAUDE_MODEL=claude-sonnet-4-20250514
 # true  = agents use SKILL.md files via MAF native skill discovery
 # false = agents use inline system prompt instructions (prompt-based)
 USE_SKILLS=true
+
+# Azure Application Insights (optional — enables OpenTelemetry tracing)
+APPLICATION_INSIGHTS_CONNECTION_STRING=InstrumentationKey=...;IngestionEndpoint=...
 ```
 
 The MCP server endpoints are pre-configured with defaults from the
@@ -2042,6 +2048,78 @@ AZURE_STORAGE_ACCOUNT_URL=https://<account>.blob.core.windows.net
 
 ---
 
+## Observability — Azure Application Insights
+
+The backend integrates with **Azure Application Insights** via the
+`azure-monitor-opentelemetry` SDK, providing distributed tracing, live
+metrics, and request telemetry for every prior authorization review.
+
+### How it works
+
+1. **`observability.py`** calls `configure_azure_monitor()` at startup
+   (before the FastAPI app is created) using the connection string from
+   `APPLICATION_INSIGHTS_CONNECTION_STRING`.
+2. The **Microsoft Agent Framework**'s built-in OpenTelemetry support
+   (`agent_framework.observability`) is enabled with
+   `enable_instrumentation()`, which auto-instruments agent invocations,
+   MCP tool calls, and model requests.
+3. **Custom phase spans** in the orchestrator provide a hierarchical
+   trace for every review.
+
+### Trace hierarchy
+
+Each review produces a trace with the following span structure:
+
+```
+prior_auth_review (request_id)
+  ├── phase_1_parallel
+  │     ├── compliance_agent      (auto-instrumented by MAF)
+  │     └── clinical_agent        (auto-instrumented by MAF)
+  ├── phase_2_coverage
+  │     └── coverage_agent        (auto-instrumented by MAF)
+  ├── phase_3_synthesis
+  │     └── synthesis_agent       (auto-instrumented by MAF)
+  └── phase_4_audit
+```
+
+### Custom span attributes
+
+| Span | Attributes |
+|------|-----------|
+| `prior_auth_review` | `request_id` |
+| `phase_1_parallel` | `compliance_status`, `clinical_status` |
+| `phase_2_coverage` | `coverage_status` |
+| `phase_3_synthesis` | `recommendation`, `confidence` |
+| `phase_4_audit` | `confidence`, `confidence_level` |
+
+### Enabling observability
+
+Add the connection string to `backend/.env`:
+
+```env
+APPLICATION_INSIGHTS_CONNECTION_STRING=InstrumentationKey=<key>;IngestionEndpoint=https://<region>.in.applicationinsights.azure.com/;...
+```
+
+Get the connection string from your Application Insights resource in the
+Azure Portal → **Overview** → **Connection String**.
+
+If the variable is not set or the `azure-monitor-opentelemetry` package is
+not installed, the application runs normally without observability —
+all tracing code uses a no-op fallback so there is zero runtime impact.
+
+### What you see in Application Insights
+
+- **Application Map** — backend service with dependency arrows to
+  Microsoft AI Foundry (model endpoint) and MCP servers
+- **Transaction Search** — filter by `prior_auth_review` operation to see
+  the full end-to-end trace for a single review
+- **Live Metrics** — real-time request rate, failure rate, and response
+  times during demo or load testing
+- **Performance** — percentile latency breakdown by phase (P1 parallel
+  vs. P2 coverage vs. P3 synthesis)
+
+---
+
 ## Docker Deployment
 
 ### Architecture
@@ -2134,6 +2212,7 @@ Foundry credentials to the environment variables the Claude Code CLI expects:
 | `AZURE_FOUNDRY_API_KEY` | `ANTHROPIC_FOUNDRY_API_KEY` | Microsoft AI Foundry auth |
 | `AZURE_FOUNDRY_ENDPOINT` | `ANTHROPIC_FOUNDRY_BASE_URL` | Foundry endpoint URL |
 | (set automatically) | `CLAUDE_CODE_USE_FOUNDRY=true` | Enables Foundry mode |
+| `APPLICATION_INSIGHTS_CONNECTION_STRING` | `APPLICATION_INSIGHTS_CONNECTION_STRING` | App Insights telemetry (optional) |
 
 ### Building without local Docker (Azure Container Registry)
 
