@@ -361,8 +361,18 @@ prior-auth-maf/
 │       ├── types.ts                      # TypeScript types
 │       └── sample-case.ts               # Demo case data
 │
+├── .devcontainer/                        # Dev Container configuration
+├── .github/                              # Issue templates
 ├── docs/                                 # Supporting documentation
+├── infra/                                # Azure Bicep IaC modules
+├── azure.yaml                            # Azure Developer CLI project
 ├── docker-compose.yml                    # Two-container local dev
+├── CODE_OF_CONDUCT.md                    # Microsoft Open Source CoC
+├── CONTRIBUTING.md                       # Contribution guidelines
+├── LICENSE                               # MIT License
+├── SECURITY.md                           # Security reporting
+├── SUPPORT.md                            # Support guidelines
+├── TRANSPARENCY_FAQ.md                   # Responsible AI FAQ
 └── README.md                             # This file
 ```
 
@@ -375,7 +385,7 @@ Have questions, find a bug, or want to request a feature? [Submit a new issue](h
 <br/>
 
 ## Responsible AI Transparency FAQ
-Please refer to [Transparency FAQ](./docs/TRANSPARENCY_FAQ.md) for responsible AI transparency details of this solution accelerator.
+Please refer to [Transparency FAQ](./TRANSPARENCY_FAQ.md) for responsible AI transparency details of this solution accelerator.
 
 <br/>
 

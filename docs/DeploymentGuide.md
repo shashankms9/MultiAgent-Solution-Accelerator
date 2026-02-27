@@ -670,7 +670,8 @@ Now that your deployment is complete and tested, explore these resources to enha
 ## Need Help?
 
 - 🐛 **Issues:** Check [Troubleshooting Guide](./troubleshooting.md)
-- 💬 **Support:** [Open an issue](https://github.com/amitmukh/prior-auth-maf/issues) on GitHub
+- 💬 **Support:** Review [Support Guidelines](../SUPPORT.md)
+- 🔧 **Contributing:** See [Contributing Guide](../CONTRIBUTING.md)
 - 📖 **Documentation:** See [Architecture](./architecture.md) for system design details
 
 ---
