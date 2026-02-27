@@ -186,57 +186,54 @@ Pricing varies per region and usage, so it isn't possible to predict exact costs
 
 ## <img src="./docs/images/readme/business-scenario.svg" width="48" /> Business Scenario
 
-### What is prior authorization?
+|![Prior Authorization Review — Application Interface](./docs/images/readme/interface.png)|
+|---|
 
-**Prior authorization (PA)** — also called pre-certification or pre-approval — is a
-utilization management process required by health insurance payers before they agree
-to cover a prescribed medical service, procedure, or medication. The treating
-provider must demonstrate that the requested service is **medically necessary** and
-meets the payer's **coverage policy criteria** before care is delivered.
+<br/>
 
-```mermaid
-flowchart TD
-  A["🏥 Provider submits PA request<br/>Fax · Portal · EDI"] --> B["📋 Payer intake<br/>Completeness check<br/>Demographics · Codes · Clinical notes"]
-  B --> C["🔬 Clinical review<br/>Medical necessity assessment<br/>NCD/LCD + payer policy criteria"]
-  C --> D["✅ Decision<br/>Approve · Pend · Deny"]
-  C --> E["📝 Additional information requested<br/>Average 2–3 round-trips"]
-  E --> A
-```
+Healthcare organizations processing prior authorization (PA) requests face significant challenges in coordinating complex clinical reviews across multiple departments. They must evaluate medical necessity, verify coverage policies, and produce auditable decisions — often under strict regulatory timelines. Some of the challenges they face include:
 
-### Industry challenges
+- **High volume** — U.S. providers submit ~400 million PA requests per year (AMA, 2024)
+- **Manual, time-consuming reviews** — each request takes 20–45 minutes of clinician time
+- **Slow turnaround** — average PA decision takes 5–14 business days
+- **Inconsistent assessments** — manual reviews are subject to reviewer variability
+- **Regulatory pressure** — CMS mandates electronic PA by 2026 with 72-hour urgent response limits
 
-| Challenge | Impact |
-|-----------|--------|
-| **Volume** | U.S. providers submit **~400 million PA requests per year** (AMA, 2024). Large payers process 50,000–200,000+ requests daily. |
-| **Manual effort** | Each request takes **20–45 minutes** of clinician and administrative time. |
-| **Turnaround delays** | Average PA decision takes **5–14 business days**, with complex cases exceeding 30 days. |
-| **Administrative burden** | 88% of physicians report PA burdens are "high" or "extremely high" (AMA 2023). Practices spend **13 hours/week** on PA. |
-| **Inconsistency** | Manual reviews are subject to reviewer variability and incomplete documentation assessment. |
-| **Regulatory pressure** | CMS Final Rule (CMS-0057-F) mandates electronic PA by 2026, with 72-hour (urgent) and 7-day (standard) response limits. |
+By using the *Prior Authorization Review — Multi-Agent Solution Accelerator*, organizations can automate these processes, ensuring that all clinical reviews are accurately coordinated, auditable, and executed efficiently.
 
-### How this solution addresses these challenges
+### Business value
+<details>
+  <summary>Click to learn more about what value this solution provides</summary>
 
-| # | Challenge | Solution |
-|---|-----------|----------|
-| 1 | **Manual intake triage** | **Compliance Agent** validates all required documentation in seconds — patient demographics, provider credentials, codes, clinical notes quality |
-| 2 | **Slow clinical review** | **Clinical Reviewer Agent** extracts and structures clinical data, validates ICD-10 codes, searches PubMed and clinical trials — work that takes a human 15-30 minutes done in under a minute |
-| 3 | **Manual policy lookup** | **Coverage Agent** verifies provider credentials, searches NCDs/LCDs, and maps each criterion to clinical evidence with auditable MET/NOT_MET/INSUFFICIENT assessments |
-| 4 | **Lack of transparency** | **Synthesis Agent** evaluates a gate-based rubric producing a recommendation with full audit trail — every data source, every criterion, every confidence score |
-| 5 | **No human oversight** | **Decision Panel** — AI produces a draft recommendation; human reviewers Accept or Override with documented rationale |
-| 6 | **Missing audit artifacts** | System generates **notification letters** (PDF), **audit justification documents** (8-section PDF), and structured data for EDI integration |
+  - **Reduce review time from 20+ minutes to under 2 minutes** <br/>
+  Compliance and Clinical agents run concurrently via parallel execution, dramatically reducing wall-clock time per case.
 
-### Adoption at scale
+  - **Ensure consistency and auditability** <br/>
+  Gate-based decision rubric with per-criterion MET/NOT_MET/INSUFFICIENT scoring eliminates reviewer variability and produces complete audit trails.
 
-| Capability | How It Enables Scale |
-|-----------|---------------------|
-| **Parallel agent execution** | Compliance and Clinical agents run concurrently, reducing wall-clock time from 20+ minutes to under 2 minutes per case |
-| **Skills-based architecture** | Agent behaviors defined in SKILL.md files — domain experts can update rules without code changes |
-| **MCP-based data access** | Standardized MCP servers for NPI, ICD-10, CMS Coverage, PubMed, and Clinical Trials provide modular, swappable integrations |
-| **Configurable decision policy** | LENIENT mode (APPROVE/PEND) ships as default; STRICT mode (adding DENY) is a configuration toggle |
-| **Container-ready deployment** | Docker Compose for dev, with a clear path to Azure Container Apps or Kubernetes |
-| **Stateless API design** | Each review is independent — horizontally scalable behind a load balancer |
-| **Audit and compliance** | Every review produces a complete audit trail with data source attribution and confidence breakdowns |
-| **Multi-payer extensibility** | Architecture supports adding payer-specific policy engines and commercial coverage databases |
+  - **Maintain human oversight** <br/>
+  AI produces draft recommendations; human reviewers Accept or Override with documented rationale — every decision is traceable.
+
+  - **Scale without proportional staffing** <br/>
+  Stateless API design enables horizontal scaling behind a load balancer. Skills-based architecture lets domain experts update clinical rules without code changes.
+
+  - **Meet regulatory requirements** <br/>
+  Automated documentation generation (notification letters, audit PDFs) supports CMS compliance and payer reporting obligations.
+
+</details>
+
+### Use Case
+<details>
+  <summary>Click to learn more about the prior authorization use case</summary>
+
+  | Scenario | Persona | Challenges | Solution Approach |
+  |----------|---------|------------|-------------------|
+  | PA intake triage | Utilization Review Nurse | Manually checking demographics, provider credentials, codes, and clinical notes quality for completeness is time-consuming and error-prone. | **Compliance Agent** validates all required documentation in seconds, flagging missing or insufficient fields before clinical review begins. |
+  | Clinical evidence review | Medical Director | Extracting structured clinical data, validating ICD-10 codes, and searching PubMed for supporting evidence takes 15–30 minutes per case. | **Clinical Reviewer Agent** automates clinical data extraction, code validation, and literature/trial search using MCP-connected healthcare data sources. |
+  | Coverage policy evaluation | PA Coordinator | Looking up Medicare NCDs/LCDs, mapping each policy criterion to clinical evidence, and documenting medical necessity assessments is manual and inconsistent. | **Coverage Agent** searches CMS coverage databases, verifies provider credentials, and produces auditable MET/NOT_MET/INSUFFICIENT criterion mappings. |
+  | Final decision synthesis | Clinical Reviewer | Combining findings from multiple reviewers into a consistent, auditable recommendation with confidence scoring requires significant coordination. | **Orchestrator + Synthesis** evaluates a gate-based rubric (Provider → Codes → Medical Necessity), produces a recommendation with confidence scores, and generates notification letters and audit PDFs. |
+
+</details>
 
 ---
 
