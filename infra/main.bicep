@@ -1,7 +1,8 @@
 // ---------------------------------------------------------------------------
 // Prior Auth MAF — Main Bicep template
-// Deploys: Resource Group, Container Registry, Container Apps Environment,
-//          Backend + Frontend Container Apps, Log Analytics, App Insights
+// Deploys: Resource Group, AI Foundry (Hub + Project), Container Registry,
+//          Container Apps Environment, Backend + Frontend Container Apps,
+//          Log Analytics, App Insights
 // ---------------------------------------------------------------------------
 
 targetScope = 'subscription'
@@ -75,6 +76,19 @@ module monitoring './modules/monitoring.bicep' = {
   }
 }
 
+// ── AI Foundry (Hub + Project) ──────────────────────────────────────────────
+
+module aiFoundry './modules/ai-foundry.bicep' = {
+  name: 'ai-foundry'
+  scope: rg
+  params: {
+    name: '${abbrs.aiFoundry}${resourceToken}'
+    location: location
+    tags: tags
+    appInsightsId: monitoring.outputs.appInsightsResourceId
+  }
+}
+
 // ── Container Apps Environment ──────────────────────────────────────────────
 
 module containerAppsEnv './modules/container-apps-env.bicep' = {
@@ -145,6 +159,9 @@ module frontend './modules/container-app.bicep' = {
 
 output AZURE_RESOURCE_GROUP string = rg.name
 output AZURE_CONTAINER_REGISTRY_ENDPOINT string = containerRegistry.outputs.loginServer
+output AI_FOUNDRY_HUB_NAME string = aiFoundry.outputs.hubName
+output AI_FOUNDRY_PROJECT_NAME string = aiFoundry.outputs.projectName
+output AI_FOUNDRY_PORTAL_URL string = aiFoundry.outputs.portalUrl
 output BACKEND_CONTAINER_APP_NAME string = backend.outputs.name
 output FRONTEND_CONTAINER_APP_NAME string = frontend.outputs.name
 output frontendUrl string = frontend.outputs.fqdn

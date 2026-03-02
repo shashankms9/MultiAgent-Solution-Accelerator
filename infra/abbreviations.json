@@ -4,5 +4,6 @@
   "operationalInsightsWorkspaces": "log-",
   "insightsComponents": "appi-",
   "appManagedEnvironments": "cae-",
-  "appContainerApps": "ca-"
+  "appContainerApps": "ca-",
+  "aiFoundry": "aif-"
 }

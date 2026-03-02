@@ -37,30 +37,29 @@ Ensure you have access to an [Azure subscription](https://azure.microsoft.com/fr
 
 | **Service** | **Purpose** | **Pricing** |
 |-------------|-------------|-------------|
-| [Microsoft Foundry](https://learn.microsoft.com/en-us/azure/ai-foundry/) | Claude Sonnet 4.6 model inference | [Pricing](https://azure.microsoft.com/en-us/pricing/details/ai-foundry/) |
+| [Microsoft Foundry](https://learn.microsoft.com/en-us/azure/ai-foundry/) | AI Foundry Hub + Project (auto-provisioned) | [Pricing](https://azure.microsoft.com/en-us/pricing/details/ai-foundry/) |
 | [Azure Container Apps](https://learn.microsoft.com/en-us/azure/container-apps/) | Hosting backend and frontend containers | [Pricing](https://azure.microsoft.com/en-us/pricing/details/container-apps/) |
 | [Azure Container Registry](https://learn.microsoft.com/en-us/azure/container-registry/) | Storing Docker images | [Pricing](https://azure.microsoft.com/en-us/pricing/details/container-registry/) |
 | [Azure Application Insights](https://learn.microsoft.com/en-us/azure/azure-monitor/app/app-insights-overview) | Observability and tracing (optional) | [Pricing](https://azure.microsoft.com/en-us/pricing/details/monitor/) |
+
+> **Note:** The AI Foundry Hub and Project are automatically provisioned by `azd up`. You only need to deploy the Claude model manually after provisioning (see Step 4.3).
 
 **Supported Regions:** Claude models on Microsoft Foundry are currently available only in **East US 2** and **Sweden Central**. You must deploy to one of these regions.
 
 🔍 **Check Availability:** See [Use Foundry Models Claude](https://learn.microsoft.com/en-us/azure/foundry/foundry-models/how-to/use-foundry-models-claude) for the latest region availability.
 
-### 1.3 Claude Model Quota Check (Optional)
+### 1.3 Claude Model Access (Pre-check)
 
-💡 **RECOMMENDED:** Verify that your Microsoft Foundry account has access to Claude Sonnet 4.6 before deployment.
-
-**Steps to verify:**
+💡 **OPTIONAL:** Before deployment, you can verify that Claude Sonnet 4.6 is available in your target region.
 
 1. Go to [Microsoft Foundry](https://ai.azure.com/)
-2. Navigate to your project → **Model catalog**
+2. Navigate to **Model catalog**
 3. Search for **Claude Sonnet 4.6** (model ID: `claude-sonnet-4-6`)
-4. Verify the model is available in your selected region
-5. Note your **API key** and **endpoint URL** — you'll need these in Step 3
+4. Verify the model is listed for **East US 2** or **Sweden Central**
 
-> **Note:** When you run `azd up`, the deployment will prompt you for these credentials, so this pre-check is optional but helpful for planning purposes.
+> **Note:** The AI Foundry Hub and Project are created automatically during deployment. You will deploy the Claude model and configure its API key/endpoint in Step 4.3 after `azd up` completes.
 
-📖 **Learn More:** See [Microsoft Foundry Claude Models](https://learn.microsoft.com/en-us/azure/ai-foundry/foundry-models/how-to/use-foundry-models-claude) for setup instructions.
+📖 **Learn More:** See [Use Foundry Models Claude](https://learn.microsoft.com/en-us/azure/foundry/foundry-models/how-to/use-foundry-models-claude) for detailed setup instructions.
 
 ---
 
@@ -250,15 +249,17 @@ azd up
 1. **Environment name** (e.g., `prior-auth-dev`)
 2. **Azure subscription** selection
 3. **Azure region** — select **East US 2** (`eastus2`) or **Sweden Central** (`swedencentral`)
-4. **Azure Foundry API key** and **endpoint** — from Step 1.3
+4. **Azure Foundry API key** and **endpoint** — leave blank for now (you'll configure these after deploying the Claude model in Step 4.3)
 
 **What gets deployed:**
+- **AI Foundry Hub + Project** (for Claude model deployment)
 - Azure Container Registry (also used for remote image builds — no local Docker required)
 - Azure Container Apps Environment
 - Backend Container App (Python/FastAPI, port 8000)
 - Frontend Container App (Next.js/nginx, port 80)
 - Log Analytics workspace
 - Application Insights
+- Storage Account and Key Vault (AI Foundry dependencies)
 
 > **Note:** Container images are built remotely on Azure Container Registry, so no local Docker installation is required for deployment. This works on any machine architecture (x86, ARM64) and any OS.
 
@@ -266,7 +267,45 @@ azd up
 
 **⚠️ Deployment Issues:** If you encounter errors or timeouts, try the other supported region (East US 2 or Sweden Central) as there may be capacity constraints. For detailed error solutions, see our [Troubleshooting Guide](./troubleshooting.md).
 
-### 4.3 Get Application URL
+### 4.3 Deploy Claude Model & Configure Credentials
+
+After `azd up` completes, the AI Foundry Hub and Project are provisioned. Now deploy the Claude model:
+
+**Step 1: Open the AI Foundry Portal**
+
+The portal URL is displayed in the deployment output, or navigate directly:
+
+```bash
+azd show
+```
+
+Look for the `AI_FOUNDRY_PORTAL_URL` output and open it in your browser, or go to [ai.azure.com](https://ai.azure.com/) and select the provisioned project.
+
+**Step 2: Deploy the Claude Model**
+
+1. In the AI Foundry portal, navigate to your project
+2. Go to **Model catalog** → search for **Claude Sonnet 4.6**
+3. Click **Deploy** and follow the prompts
+4. Once deployed, note the **API key** and **Endpoint URL** from the deployment details
+
+📖 **Detailed Instructions:** See [Use Foundry Models Claude](https://learn.microsoft.com/en-us/azure/foundry/foundry-models/how-to/use-foundry-models-claude) for step-by-step guidance.
+
+**Step 3: Configure the Backend with Claude Credentials**
+
+Set the API key and endpoint in your azd environment:
+
+```bash
+azd env set AZURE_FOUNDRY_API_KEY <your-api-key>
+azd env set AZURE_FOUNDRY_ENDPOINT <your-endpoint-url>
+```
+
+Then redeploy to apply the credentials:
+
+```bash
+azd up
+```
+
+### 4.4 Get Application URL
 
 After successful deployment:
 
@@ -294,7 +333,7 @@ The frontend URL will be displayed in the deployment output. You can also find i
 
 **Quick Test Steps:**
 
-1. **Access the application** using the URL from Step 4.3
+1. **Access the application** using the URL from Step 4.4
 2. Click **"Load Sample Case"** to populate the form with demo data
 3. Click **"Submit for Review"**
 4. Monitor the progress tracker — you should see all 5 phases complete

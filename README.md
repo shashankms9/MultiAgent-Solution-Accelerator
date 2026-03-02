@@ -164,11 +164,11 @@ Follow the quick deploy steps on the deployment guide to deploy this solution to
 |---|---|---|
 
 > ⚠️ **Important: Check Microsoft Foundry Quota Availability**
-> <br/>To ensure sufficient quota is available in your subscription, please follow the [quota check instructions](./docs/DeploymentGuide.md#14-claude-model-quota-check) before you deploy the solution.
+> <br/>To ensure Claude models are available in your target region, please check the [model availability instructions](./docs/DeploymentGuide.md#13-claude-model-access-pre-check) before you deploy the solution.
 
 ### Prerequisites & Costs
 
-To deploy this solution accelerator, ensure you have access to an [Azure subscription](https://azure.microsoft.com/free/) with the necessary permissions to create resource groups and resources. You also need a [Microsoft Foundry](https://learn.microsoft.com/en-us/azure/ai-foundry/) resource with access to **Claude models** via [Foundry Models](https://learn.microsoft.com/en-us/azure/foundry/foundry-models/how-to/use-foundry-models-claude).
+To deploy this solution accelerator, ensure you have access to an [Azure subscription](https://azure.microsoft.com/free/) with the necessary permissions to create resource groups and resources. The **AI Foundry Hub and Project** are automatically provisioned by `azd up`. After deployment, you will deploy the **Claude model** from the model catalog — see [Use Foundry Models Claude](https://learn.microsoft.com/en-us/azure/foundry/foundry-models/how-to/use-foundry-models-claude) for details.
 
 > ⚠️ **Region requirement:** Claude models on Microsoft Foundry are currently available only in **East US 2** and **Sweden Central**. You must deploy to one of these regions. See [Use Foundry Models Claude](https://learn.microsoft.com/en-us/azure/foundry/foundry-models/how-to/use-foundry-models-claude) for the latest region availability.
 
@@ -176,7 +176,7 @@ Pricing varies per region and usage, so it isn't possible to predict exact costs
 
 | Azure Service | Purpose | Pricing |
 |--------------|---------|---------|
-| [Microsoft Foundry](https://azure.microsoft.com/en-us/pricing/details/ai-foundry/) | Claude Sonnet 4.6 model inference | [Pricing](https://azure.microsoft.com/en-us/pricing/details/ai-foundry/) |
+| [Microsoft Foundry](https://azure.microsoft.com/en-us/pricing/details/ai-foundry/) | AI Foundry Hub + Project (auto-provisioned) + Claude model inference | [Pricing](https://azure.microsoft.com/en-us/pricing/details/ai-foundry/) |
 | [Azure Container Apps](https://azure.microsoft.com/en-us/pricing/details/container-apps/) | Backend + frontend hosting | [Pricing](https://azure.microsoft.com/en-us/pricing/details/container-apps/) |
 | [Azure Container Registry](https://azure.microsoft.com/en-us/pricing/details/container-registry/) | Docker image storage | [Pricing](https://azure.microsoft.com/en-us/pricing/details/container-registry/) |
 | [Azure Application Insights](https://azure.microsoft.com/en-us/pricing/details/monitor/) | Observability and tracing (optional) | [Pricing](https://azure.microsoft.com/en-us/pricing/details/monitor/) |
