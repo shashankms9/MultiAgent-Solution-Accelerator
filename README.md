@@ -39,6 +39,7 @@ confidence scoring, progressive gate evaluation, and structured audit trails.
 
 ---
 
+<a id="solution-overview"></a>
 ## <img src="./docs/images/readme/solution-overview.svg" width="48" /> Solution overview
 
 This solution leverages **Microsoft Foundry**, **Microsoft Agent Framework**,
@@ -148,6 +149,7 @@ The orchestrator coordinates four phases with three specialized agents:
 
 ---
 
+<a id="quick-deploy"></a>
 ## <img src="./docs/images/readme/quick-deploy.svg" width="48" /> Quick deploy
 
 ### How to install or deploy
@@ -183,6 +185,7 @@ Pricing varies per region and usage, so it isn't possible to predict exact costs
 
 ---
 
+<a id="business-scenario"></a>
 ## <img src="./docs/images/readme/business-scenario.svg" width="48" /> Business Scenario
 
 |![Prior Authorization Review — Application Interface](./docs/images/readme/interface.png)|
@@ -236,6 +239,7 @@ By using the *Prior Authorization Review — Multi-Agent Solution Accelerator*, 
 
 ---
 
+<a id="supporting-documentation"></a>
 ## <img src="./docs/images/readme/supporting-documentation.svg" width="48" /> Supporting documentation
 
 | Document | Description |
