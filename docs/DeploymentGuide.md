@@ -53,7 +53,7 @@ Ensure you have access to an [Azure subscription](https://azure.microsoft.com/fr
 💡 **OPTIONAL:** Before deployment, you can verify that Claude Sonnet 4.6 is available in your target region.
 
 1. Go to [Microsoft Foundry](https://ai.azure.com/)
-2. Navigate to **Model catalog**
+2. Click the **Discover** tab → select **Models** in the left menu
 3. Search for **Claude Sonnet 4.6** (model ID: `claude-sonnet-4-6`)
 4. Verify the model is listed for **East US 2** or **Sweden Central**
 
@@ -191,7 +191,7 @@ APPLICATION_INSIGHTS_CONNECTION_STRING=InstrumentationKey=...;IngestionEndpoint=
 >    - **Project API key** — This is your `AZURE_FOUNDRY_API_KEY`.
 >    - **Project endpoint** (e.g., `https://<resource-name>.services.ai.azure.com`) — Append `/anthropic` to get your `AZURE_FOUNDRY_ENDPOINT`.
 >    - **Azure OpenAI endpoint** — Not used for Claude models.
-> 3. The **deployment name** of your Claude model (e.g., `claude-sonnet-4-6`) is your `CLAUDE_MODEL`. Find it under **Build** → **Deployments**.
+> 3. The **deployment name** of your Claude model (e.g., `claude-sonnet-4-6`) is your `CLAUDE_MODEL`. Find it under the **Build** tab → **Deployments** in the left menu.
 >
 > ```
 > Project endpoint = "https://<resource-name>.services.ai.azure.com"   + "/anthropic"  →  AZURE_FOUNDRY_ENDPOINT
@@ -300,10 +300,10 @@ Look for the `AI_FOUNDRY_PORTAL_URL` output and open it in your browser, or go t
 
 **Step 2: Deploy the Claude Model**
 
-1. In the AI Foundry portal, navigate to your project
-2. Go to **Model catalog** → search for **Claude Sonnet 4.6**
-3. Click **Deploy** and follow the prompts
-4. Once deployed, note the **API key** and **Endpoint URL** from the deployment details
+1. In the Foundry portal, click the **Discover** tab → select **Models** in the left menu
+2. Search for **Claude Sonnet 4.6** (or your preferred Claude model)
+3. Click the model → **Deploy** and follow the prompts
+4. Once deployed, the **Project API key** and **Project endpoint** are available on the **Home** tab
 
 📖 **Detailed Instructions:** See [Use Foundry Models Claude](https://learn.microsoft.com/en-us/azure/foundry/foundry-models/how-to/use-foundry-models-claude) for step-by-step guidance.
 
@@ -855,7 +855,7 @@ All environment variables used by the application, organized by purpose.
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `CLAUDE_MODEL` | No | `claude-sonnet-4-6` | The Claude **deployment name** as shown in the Foundry portal under **Build** → **Deployments**. Must exactly match the name of a model deployed in your Microsoft Foundry resource. Common values: `claude-opus-4-5`, `claude-sonnet-4-6`. |
+| `CLAUDE_MODEL` | No | `claude-sonnet-4-6` | The Claude **deployment name** as shown in the Foundry portal under the **Build** tab → **Deployments**. Must exactly match the name of a model deployed in your Microsoft Foundry resource. Common values: `claude-opus-4-5`, `claude-sonnet-4-6`. |
 | `USE_SKILLS` | No | `true` | When `true`, agents use `SKILL.md` files via MAF native skill discovery. When `false`, agents use inline system prompt instructions. |
 
 ### Application
