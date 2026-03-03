@@ -9,11 +9,54 @@ hooks:
   preprovision:
     windows:
       run: |
+        # Validate region — Claude models only available in East US 2 and Sweden Central
+        $region = azd env get-value AZURE_LOCATION 2>$null
+        if ($region -and $region -notin @('eastus2', 'swedencentral')) {
+          Write-Host ""
+          Write-Host "===============================================================" -ForegroundColor Red
+          Write-Host " REGION NOT SUPPORTED" -ForegroundColor Red
+          Write-Host "===============================================================" -ForegroundColor Red
+          Write-Host ""
+          Write-Host " You selected region: $region" -ForegroundColor Yellow
+          Write-Host ""
+          Write-Host " Claude models on Microsoft Foundry are only available in:" -ForegroundColor White
+          Write-Host "   - East US 2      (eastus2)" -ForegroundColor Cyan
+          Write-Host "   - Sweden Central (swedencentral)" -ForegroundColor Cyan
+          Write-Host ""
+          Write-Host " Please run 'azd env new' and select a supported region," -ForegroundColor White
+          Write-Host " or change region with: azd env set AZURE_LOCATION eastus2" -ForegroundColor White
+          Write-Host ""
+          Write-Host " Learn more: https://learn.microsoft.com/en-us/azure/foundry/foundry-models/how-to/use-foundry-models-claude" -ForegroundColor Gray
+          Write-Host ""
+          exit 1
+        }
         # Always provision with placeholder images; postprovision builds real ones
         azd env set IMAGES_BUILT false
       shell: pwsh
     posix:
       run: |
+        # Validate region — Claude models only available in East US 2 and Sweden Central
+        REGION=$(azd env get-value AZURE_LOCATION 2>/dev/null)
+        if [ -n "$REGION" ] && [ "$REGION" != "eastus2" ] && [ "$REGION" != "swedencentral" ]; then
+          Red='\033[0;31m'
+          Yellow='\033[1;33m'
+          Cyan='\033[0;36m'
+          White='\033[1;37m'
+          Gray='\033[0;90m'
+          NC='\033[0m'
+          printf "\n"
+          printf "${Red}===============================================================\n"
+          printf "${Red} REGION NOT SUPPORTED\n"
+          printf "${Red}===============================================================${NC}\n\n"
+          printf "${Yellow} You selected region: %s${NC}\n\n" "$REGION"
+          printf "${White} Claude models on Microsoft Foundry are only available in:${NC}\n"
+          printf "${Cyan}   - East US 2      (eastus2)${NC}\n"
+          printf "${Cyan}   - Sweden Central (swedencentral)${NC}\n\n"
+          printf "${White} Please run 'azd env new' and select a supported region,${NC}\n"
+          printf "${White} or change region with: azd env set AZURE_LOCATION eastus2${NC}\n\n"
+          printf "${Gray} Learn more: https://learn.microsoft.com/en-us/azure/foundry/foundry-models/how-to/use-foundry-models-claude${NC}\n\n"
+          exit 1
+        fi
         azd env set IMAGES_BUILT false
       shell: sh
 
