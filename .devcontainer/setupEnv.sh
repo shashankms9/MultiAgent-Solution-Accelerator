@@ -16,6 +16,8 @@ else
 fi
 
 echo "Upgrading Azure CLI to latest..."
+# Remove stale Yarn repo that blocks apt-get update (expired GPG key)
+sudo rm -f /etc/apt/sources.list.d/yarn.list 2>/dev/null
 curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
 echo "az CLI version: $(az version --query '"azure-cli"' -o tsv)"
 
