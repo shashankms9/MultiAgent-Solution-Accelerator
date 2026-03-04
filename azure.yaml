@@ -218,34 +218,38 @@ hooks:
           if ($null -eq $mlUsage) { $mlUsage = 0 }
 
           # Display quota summary
+          $acrLimit = 50
+          $mlLimit = 50
           Write-Host ""
           Write-Host " Resource Quota Summary ($region):" -ForegroundColor Yellow
-          Write-Host " ┌────────────────────────────────┬────────┬────────┐" -ForegroundColor Gray
-          Write-Host " │ Resource                       │ In Use │ Status │" -ForegroundColor Gray
-          Write-Host " ├────────────────────────────────┼────────┼────────┤" -ForegroundColor Gray
+          Write-Host " ┌────────────────────────────────┬────────┬───────────┬────────┐" -ForegroundColor Gray
+          Write-Host " │ Resource                       │ In Use │ Available │ Status │" -ForegroundColor Gray
+          Write-Host " ├────────────────────────────────┼────────┼───────────┼────────┤" -ForegroundColor Gray
 
           # Container Apps Environments
           if ($caEnvRemaining -gt 0) {
-            Write-Host " │ Container Apps Environments    │ $($caEnvUsage.ToString().PadLeft(6)) │  " -ForegroundColor Gray -NoNewline
+            Write-Host " │ Container Apps Environments    │ $($caEnvUsage.ToString().PadLeft(6)) │ $($caEnvRemaining.ToString().PadLeft(6))/$caEnvLimit │  " -ForegroundColor Gray -NoNewline
             Write-Host "OK" -ForegroundColor Green -NoNewline
             Write-Host "  │" -ForegroundColor Gray
           } else {
-            Write-Host " │ Container Apps Environments    │ $($caEnvUsage.ToString().PadLeft(6)) │ " -ForegroundColor Gray -NoNewline
+            Write-Host " │ Container Apps Environments    │ $($caEnvUsage.ToString().PadLeft(6)) │      0/$caEnvLimit │ " -ForegroundColor Gray -NoNewline
             Write-Host "FULL" -ForegroundColor Red -NoNewline
             Write-Host " │" -ForegroundColor Gray
           }
 
           # Container Registries
-          Write-Host " │ Container Registries           │ $($acrUsage.ToString().PadLeft(6)) │  " -ForegroundColor Gray -NoNewline
+          $acrRemaining = $acrLimit - [int]$acrUsage
+          Write-Host " │ Container Registries           │ $($acrUsage.ToString().PadLeft(6)) │ $($acrRemaining.ToString().PadLeft(6))/$acrLimit │  " -ForegroundColor Gray -NoNewline
           Write-Host "OK" -ForegroundColor Green -NoNewline
           Write-Host "  │" -ForegroundColor Gray
 
           # AI Foundry Workspaces
-          Write-Host " │ AI Foundry Workspaces          │ $($mlUsage.ToString().PadLeft(6)) │  " -ForegroundColor Gray -NoNewline
+          $mlRemaining = $mlLimit - [int]$mlUsage
+          Write-Host " │ AI Foundry Workspaces          │ $($mlUsage.ToString().PadLeft(6)) │ $($mlRemaining.ToString().PadLeft(6))/$mlLimit │  " -ForegroundColor Gray -NoNewline
           Write-Host "OK" -ForegroundColor Green -NoNewline
           Write-Host "  │" -ForegroundColor Gray
 
-          Write-Host " └────────────────────────────────┴────────┴────────┘" -ForegroundColor Gray
+          Write-Host " └────────────────────────────────┴────────┴───────────┴────────┘" -ForegroundColor Gray
 
           if ($caEnvRemaining -le 0) {
             Write-Host ""
@@ -474,25 +478,37 @@ hooks:
           CA_ENV_LIMIT=15
 
           # Display quota summary
+          ACR_LIMIT=50
+          ML_LIMIT=50
           printf "\n${Yellow} Resource Quota Summary (%s):${NC}\n" "$REGION"
-          printf "${Gray} ┌────────────────────────────────┬────────┬────────┐${NC}\n"
-          printf "${Gray} │ Resource                       │ In Use │ Status │${NC}\n"
-          printf "${Gray} ├────────────────────────────────┼────────┼────────┤${NC}\n"
+          printf "${Gray} ┌────────────────────────────────┬────────┬───────────┬────────┐${NC}\n"
+          printf "${Gray} │ Resource                       │ In Use │ Available │ Status │${NC}\n"
+          printf "${Gray} ├────────────────────────────────┼────────┼───────────┼────────┤${NC}\n"
 
           if [ "$CA_ENV_USAGE" = "N/A" ]; then
-            printf "${Gray} │ Container Apps Environments    │    N/A │ ${Yellow}SKIP${Gray} │${NC}\n"
+            printf "${Gray} │ Container Apps Environments    │    N/A │       N/A │ ${Yellow}SKIP${Gray} │${NC}\n"
             CA_REMAINING=1  # assume OK
           else
             CA_REMAINING=$((CA_ENV_LIMIT - CA_ENV_USAGE))
             if [ "$CA_REMAINING" -gt 0 ]; then
-              printf "${Gray} │ Container Apps Environments    │ %6s │  ${Green}OK${Gray}  │${NC}\n" "$CA_ENV_USAGE"
+              printf "${Gray} │ Container Apps Environments    │ %6s │ %6s/%s │  ${Green}OK${Gray}  │${NC}\n" "$CA_ENV_USAGE" "$CA_REMAINING" "$CA_ENV_LIMIT"
             else
-              printf "${Gray} │ Container Apps Environments    │ %6s │ ${Red}FULL${Gray} │${NC}\n" "$CA_ENV_USAGE"
+              printf "${Gray} │ Container Apps Environments    │ %6s │ %6s/%s │ ${Red}FULL${Gray} │${NC}\n" "$CA_ENV_USAGE" "0" "$CA_ENV_LIMIT"
             fi
           fi
-          printf "${Gray} │ Container Registries           │ %6s │  ${Green}OK${Gray}  │${NC}\n" "$ACR_USAGE"
-          printf "${Gray} │ AI Foundry Workspaces          │ %6s │  ${Green}OK${Gray}  │${NC}\n" "$ML_USAGE"
-          printf "${Gray} └────────────────────────────────┴────────┴────────┘${NC}\n"
+          if [ "$ACR_USAGE" = "N/A" ]; then
+            printf "${Gray} │ Container Registries           │    N/A │       N/A │ ${Yellow}SKIP${Gray} │${NC}\n"
+          else
+            ACR_REMAINING=$((ACR_LIMIT - ACR_USAGE))
+            printf "${Gray} │ Container Registries           │ %6s │ %6s/%s │  ${Green}OK${Gray}  │${NC}\n" "$ACR_USAGE" "$ACR_REMAINING" "$ACR_LIMIT"
+          fi
+          if [ "$ML_USAGE" = "N/A" ]; then
+            printf "${Gray} │ AI Foundry Workspaces          │    N/A │       N/A │ ${Yellow}SKIP${Gray} │${NC}\n"
+          else
+            ML_REMAINING=$((ML_LIMIT - ML_USAGE))
+            printf "${Gray} │ AI Foundry Workspaces          │ %6s │ %6s/%s │  ${Green}OK${Gray}  │${NC}\n" "$ML_USAGE" "$ML_REMAINING" "$ML_LIMIT"
+          fi
+          printf "${Gray} └────────────────────────────────┴────────┴───────────┴────────┘${NC}\n"
 
           if [ "$CA_REMAINING" -le 0 ]; then
             printf "\n${Red} WARNING: Container Apps Environment quota may be exhausted!${NC}\n"
