@@ -569,7 +569,7 @@ The level of trace detail visible in Foundry depends on upstream framework relea
 | What | When | Trace Detail |
 |------|------|-------------|
 | **HTTP-level traces** | Available now | Request/response to `/review` endpoint (duration, status code) |
-| **Agent-level traces** | After [MAF PR #4326](https://github.com/microsoft/agent-framework/pull/4326) merges | `invoke_agent` spans with agent name, duration, response capture, exception tracking |
+| **Agent-level traces** | Available now (rc3+) | `invoke_agent` spans with agent name, duration, response capture, exception tracking |
 | **Tool-level traces** | After [Claude SDK #611](https://github.com/anthropics/claude-agent-sdk-python/issues/611) is resolved | Individual MCP tool call spans (e.g., `npi_lookup`, `validate_code`) as child spans |
 
 To pick up new trace capabilities, update `agent-framework-claude` version in `backend/requirements.txt` and redeploy with `azd up`. No other code changes are needed — the existing `enable_instrumentation()` call in the observability module automatically captures all emitted spans.
