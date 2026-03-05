@@ -150,6 +150,7 @@ module frontend './modules/container-app.bicep' = {
     imageName: 'frontend'
     targetPort: 80
     useAcrImage: imagesBuilt == 'true'
+    minReplicas: 1
     env: [
       { name: 'BACKEND_URL', value: 'https://${abbrs.appContainerApps}backend-${resourceToken}.${containerAppsEnv.outputs.defaultDomain}' }
     ]
