@@ -466,15 +466,17 @@ The AI Gateway is a free, Foundry-managed feature (backed by Azure API Managemen
 
 📖 **Detailed Instructions:** See [Create an AI gateway](https://learn.microsoft.com/en-us/azure/foundry/configuration/enable-ai-api-management-gateway-portal#create-an-ai-gateway).
 
-#### Step 2: Verify Application Insights Connection
+#### Step 2: Connect Application Insights to Foundry Project
 
-Foundry Control Plane uses the Application Insights resource associated with your project for tracing and diagnostics.
+Application Insights is **not automatically linked** to the Foundry project. This manual connection is required for Foundry Control Plane to display agent traces and diagnostics.
 
 1. In the Foundry portal, select **Operate** → **Admin**
 2. Under **All projects**, search for your project
 3. Select the project → **Connected resources** tab
-4. Verify that an **AppInsights** resource is listed
-5. If missing, click **Add connection** → **Application Insights** and select the one created by `azd up`
+4. If no **AppInsights** resource is listed, click **Add connection** → **Application Insights**
+5. Select the Application Insights resource created by `azd up` (named `appi-*` in your resource group)
+
+> **Note:** Without this connection, agent traces still flow to Application Insights (visible in Azure Portal), but the Foundry portal won't display them. If you configured Application Insights after registering a custom agent, you need to unregister and re-register the agent.
 
 #### Step 3: Register the Orchestrator Agent
 
