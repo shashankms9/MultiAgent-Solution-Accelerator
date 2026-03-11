@@ -92,14 +92,30 @@ The review fails as soon as a specialist phase starts.
 
 **Cause:** One or more hosted agent endpoint URLs are missing or unreachable.
 
-**Fix:** Verify all required variables are set in `backend/.env`:
+**Fix:** Check which dispatch mode is active:
+
+**Docker Compose (local dev):** Verify all URL variables are set in `backend/.env` or `docker-compose.yml`:
 
 - `HOSTED_AGENT_COMPLIANCE_URL`
 - `HOSTED_AGENT_CLINICAL_URL`
 - `HOSTED_AGENT_COVERAGE_URL`
 - `HOSTED_AGENT_SYNTHESIS_URL`
 
-For local development, make sure `docker-compose.yml` is running all four agent containers and that their ports match the URLs above.
+Make sure `docker-compose.yml` is running all four agent containers and that their ports match the URLs above.
+
+**Foundry Hosted Agents (production / `azd up`):** Verify these variables are set (injected automatically by Bicep):
+
+- `AZURE_AI_PROJECT_ENDPOINT`
+- `HOSTED_AGENT_CLINICAL_NAME`
+- `HOSTED_AGENT_COMPLIANCE_NAME`
+- `HOSTED_AGENT_COVERAGE_NAME`
+- `HOSTED_AGENT_SYNTHESIS_NAME`
+
+If set manually, confirm the project endpoint format:
+`https://<account>.services.ai.azure.com/api/projects/<project-name>`
+
+Also confirm the agents were successfully registered by `scripts/register_agents.py`
+in the postprovision hook (check `azd provision` output for registration errors).
 
 ---
 
@@ -110,14 +126,15 @@ The backend reaches the hosted endpoint but receives an authorization failure.
 **Cause:** The outbound auth header configuration does not match the hosted
 agent deployment.
 
-**Fix:** Check these settings:
+**Fix:** Depends on the dispatch mode:
 
-- `HOSTED_AGENT_AUTH_HEADER` (default `Authorization`)
-- `HOSTED_AGENT_AUTH_SCHEME` (default `Bearer`)
-- `HOSTED_AGENT_AUTH_TOKEN`
+**Docker Compose:** Direct HTTP to containers — no auth configured by default. If containers are behind a proxy requiring auth, set `HOSTED_AGENT_AUTH_HEADER`, `HOSTED_AGENT_AUTH_SCHEME`, and `HOSTED_AGENT_AUTH_TOKEN` in `.env`.
 
-If your hosted runtime expects a custom header, set the exact header name and
-token format required by that deployment.
+**Foundry Hosted Agents (production):** Credentials come from `DefaultAzureCredential`. Common causes:
+
+- The backend ACA managed identity is missing the `CognitiveServicesOpenAIUser` role on the Foundry account — check `infra/modules/role-assignments.bicep` and re-run `azd provision`
+- `AZURE_AI_PROJECT_ENDPOINT` is pointing to the wrong project or account
+- The agents were not successfully registered — check `scripts/register_agents.py` output in the postprovision hook logs
 
 ---
 

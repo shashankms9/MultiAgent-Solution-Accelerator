@@ -128,14 +128,14 @@ new-agent:
     MCP_NEW_SERVER: https://mcp.example.com/new-server/mcp
 ```
 
-For production (Azure), add the env var directly to the agent's `env:` block in `infra/main.bicep` — **not** as a Bicep parameter (MCP URLs have sensible defaults and don't need to be parameterised unless overriding):
+For production (Azure), add the env var to the agent's `env:` block in `agents/new-agent/agent.yaml` —
+agents are deployed via Foundry Hosted Agents, so MCP URLs belong in the agent descriptor rather than `infra/main.bicep`:
 
-```bicep
-// infra/main.bicep — inside the agentNew module env array
-{ name: 'MCP_NEW_SERVER', value: mcpNewServerUrl }
+```yaml
+# agents/new-agent/agent.yaml — inside the env: block
+  - name: MCP_NEW_SERVER
+    value: https://mcp.example.com/new-server/mcp
 ```
-
-Add the corresponding `param mcpNewServerUrl string = 'https://mcp.example.com/new-server/mcp'` near the other MCP URL params at the top of `main.bicep`.
 
 **Step 4 — Orchestrator** (`backend/app/agents/orchestrator.py`):
 
@@ -217,9 +217,10 @@ Update `_build_audit_trail()`, `_generate_audit_justification()`, and
 | `agents/new-agent/Dockerfile` | New file: container image |
 | `agents/new-agent/requirements.txt` | New file: `agent-framework`, `azure-ai-agentserver`, `azure-ai-projects`, `azure-identity`, `httpx`, `python-dotenv` |
 | `docker-compose.yml` | Add new agent service + env vars |
-| `infra/main.bicep` | Add agent Container App module + env vars + role assignment principal ID |
-| `azure.yaml` | Add `az acr build` + `az containerapp update` calls in postprovision hook |
-| `backend/app/config.py` | Add `NEW_AGENT_URL` setting |
+| `agents/new-agent/agent.yaml` | New file: Foundry Hosted Agent descriptor (name, runtime, resources, env vars) |
+| `scripts/register_agents.py` | Add new agent to the registration list |
+| `azure.yaml` | Add `az acr build` call for the new agent image in the postprovision hook |
+| `backend/app/config.py` | Add `HOSTED_AGENT_NEW_NAME` setting (Foundry agent name) and optionally `NEW_AGENT_URL` (docker-compose URL) |
 | `backend/app/services/hosted_agents.py` | Add dispatch call for new agent |
 | `backend/app/agents/orchestrator.py` | Import, phase registration, synthesis prompt, SSE events |
 | `frontend/lib/types.ts` | Add agent ID to types |

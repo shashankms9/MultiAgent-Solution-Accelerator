@@ -9,15 +9,22 @@ All specialist reasoning runs in four independent Foundry Hosted Agent container
 Frontend (Next.js / ACA)
   └── POST /api/review/stream   (SSE)
         └── FastAPI Backend / Orchestrator (ACA)
-              ├── POST http://agent-clinical/responses   → Clinical Reviewer Container
-              ├── POST http://agent-compliance/responses → Compliance Validation Container
-              ├── POST http://agent-coverage/responses   → Coverage Assessment Container
-              └── POST http://agent-synthesis/responses  → Synthesis Decision Container
+              │
+              ├─── [Docker Compose — local dev] ──────────────────────────────────────
+              │    POST http://agent-{name}/responses   (HOSTED_AGENT_*_URL)
+              │    → Clinical / Compliance / Coverage / Synthesis Container
+              │
+              └─── [Foundry Hosted Agents — production (azd up)] ──────────────────
+                   POST {AZURE_AI_PROJECT_ENDPOINT}/responses
+                   with  agent_reference: {name, type: "agent_framework"}
+                         Authorization: Bearer <DefaultAzureCredential>
+                   → Foundry Agent Service → registered agent containers
 ```
 
 Each agent container runs **Microsoft Agent Framework (MAF)** via
 `azure.ai.agentserver.agentframework.from_agent_framework`, exposes an HTTP
-endpoint, and is deployed to **Azure AI Foundry** as a Hosted Agent.
+endpoint, and is registered with **Azure AI Foundry** as a Hosted Agent via
+`scripts/register_agents.py`.
 
 ---
 
@@ -262,21 +269,55 @@ observability blocks are no-ops so the app runs without App Insights.
 
 ## Hosted Agent Dispatch Settings
 
-| Agent | Environment variable |
-|-------|----------------------|
-| Compliance | `HOSTED_AGENT_COMPLIANCE_URL` |
-| Clinical | `HOSTED_AGENT_CLINICAL_URL` |
-| Coverage | `HOSTED_AGENT_COVERAGE_URL` |
-| Synthesis | `HOSTED_AGENT_SYNTHESIS_URL` |
+`hosted_agents.py` automatically selects the dispatch mode based on environment:
 
-Shared request configuration:
+- **URL set** (`HOSTED_AGENT_*_URL`): direct HTTP to the container — Docker Compose mode
+- **URL empty + `AZURE_AI_PROJECT_ENDPOINT` set**: Foundry `agent_reference` routing — production mode
 
-| Setting | Default |
-|---------|---------|
-| `HOSTED_AGENT_TIMEOUT_SECONDS` | 180 |
-| `HOSTED_AGENT_AUTH_HEADER` | `Authorization` |
-| `HOSTED_AGENT_AUTH_SCHEME` | `Bearer` |
-| `HOSTED_AGENT_AUTH_TOKEN` | *(empty — Foundry injects at deploy time)* |
+**Docker Compose mode** — `HOSTED_AGENT_*_URL` vars (defaults already in `docker-compose.yml`):
+
+| Agent | Variable | Default |
+|-------|----------|---------| 
+| Clinical | `HOSTED_AGENT_CLINICAL_URL` | `http://agent-clinical:8000` |
+| Compliance | `HOSTED_AGENT_COMPLIANCE_URL` | `http://agent-compliance:8000` |
+| Coverage | `HOSTED_AGENT_COVERAGE_URL` | `http://agent-coverage:8000` |
+| Synthesis | `HOSTED_AGENT_SYNTHESIS_URL` | `http://agent-synthesis:8000` |
+
+Shared: `HOSTED_AGENT_TIMEOUT_SECONDS` (default `180`).
+
+**Foundry Hosted Agents mode** — injected automatically by Bicep via `azd up`:
+
+| Variable | Value |
+|----------|-------|
+| `AZURE_AI_PROJECT_ENDPOINT` | `https://<account>.services.ai.azure.com/api/projects/<project>` |
+| `HOSTED_AGENT_CLINICAL_NAME` | `clinical-reviewer-agent` |
+| `HOSTED_AGENT_COMPLIANCE_NAME` | `compliance-agent` |
+| `HOSTED_AGENT_COVERAGE_NAME` | `coverage-assessment-agent` |
+| `HOSTED_AGENT_SYNTHESIS_NAME` | `synthesis-agent` |
+
+Token acquisition uses `azure.identity.aio.DefaultAzureCredential` — no manual token configuration needed.
+The backend ACA managed identity holds `CognitiveServicesOpenAIUser` on the Foundry account
+(granted by `infra/modules/role-assignments.bicep`).
+
+---
+
+## Agent Registration
+
+After `azd provision`, `scripts/register_agents.py` (called from the `azure.yaml` postprovision hook)
+registers all four agents with Foundry:
+
+1. Calls `azure-ai-projects` SDK `client.agents.create_version()` with the ACR container image
+   and resource specs from `agent.yaml`
+2. Calls `az cognitiveservices agent start` to start each agent under Foundry management
+
+Resource specs (defined in each `agents/<name>/agent.yaml`):
+
+| Agent | CPU | Memory |
+|-------|-----|--------|
+| `clinical-reviewer-agent` | `1` | `2Gi` |
+| `coverage-assessment-agent` | `1` | `2Gi` |
+| `compliance-agent` | `0.5` | `1Gi` |
+| `synthesis-agent` | `1` | `2Gi` |
 
 ---
 
@@ -287,4 +328,4 @@ Shared request configuration:
 | `compliance-agent` | `agents/compliance/main.py` |
 | `clinical-reviewer-agent` | `agents/clinical/main.py` |
 | `coverage-assessment-agent` | `agents/coverage/main.py` |
-| `synthesis-decision-agent` | `agents/synthesis/main.py` |
+| `synthesis-agent` | `agents/synthesis/main.py` |

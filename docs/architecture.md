@@ -54,8 +54,11 @@ The application uses a **pure HTTP dispatch** architecture. The FastAPI backend 
    opening an SSE (Server-Sent Events) connection for real-time progress.
 
 3. The **Orchestrator** runs a pre-flight check and then dispatches the
-    four specialist agents over HTTP via the Foundry Responses API protocol
-    (`POST {agent_url}/responses`). Each agent container runs MAF
+    four specialist agents. `hosted_agents.py` uses a **two-mode dispatcher**:
+    - **Docker Compose (local dev):** direct `POST {HOSTED_AGENT_*_URL}/responses` to each agent container over the Docker bridge network.
+    - **Foundry Hosted Agents (production):** `POST {AZURE_AI_PROJECT_ENDPOINT}/responses` with `agent_reference: {name, type: "agent_framework"}` and a Bearer token from `DefaultAzureCredential`; the Foundry Agent Service routes to the correct registered agent.
+
+    Each agent container runs MAF
     `from_agent_framework(agent).run()` with `default_options={"response_format": PydanticModel}`
     for token-level structured output. Results are parsed by `hosted_agents.py`
     from the Responses API envelope (`output[0].content[0].text`).
@@ -363,7 +366,7 @@ prior-auth-maf/
 │       │   ├── synthesis_agent.py        # HTTP dispatcher → Synthesis hosted agent
 │       │   └── orchestrator.py           # Multi-agent coordinator + audit trail
 │       ├── services/
-│       │   ├── hosted_agents.py          # Foundry Responses API HTTP dispatch layer
+│       │   ├── hosted_agents.py          # Two-mode dispatcher: direct HTTP (docker-compose) or Foundry agent_reference routing (production)
 │       │   ├── audit_pdf.py              # Audit justification PDF (fpdf2)
 │       │   ├── cpt_validation.py         # CPT/HCPCS format validation (pre-flight)
 │       │   └── notification.py           # Notification letters + PDF
@@ -390,6 +393,8 @@ prior-auth-maf/
 │   ├── package.json                      # Next.js + shadcn/ui + Tailwind
 │   └── app/, components/, lib/
 │
+├── scripts/
+│   └── register_agents.py               # Post-provision: register agents with Foundry Hosted Agents service
 ├── docs/                                 # Supporting documentation
 ├── infra/                                # Azure Bicep IaC modules
 ├── azure.yaml                            # Azure Developer CLI project

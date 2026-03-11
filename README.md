@@ -13,7 +13,7 @@ and an audit justification document.
 The solution supports **two runtime modes**:
 
 - **Local / Docker Compose mode** — all 4 agent containers + backend + frontend run locally via `docker compose up`
-- **Foundry Hosted Agent mode** — each agent is deployed as an independent Foundry Hosted Agent on Azure Container Apps; the backend calls them over HTTP
+- **Foundry Hosted Agent mode** — agents are registered with Azure AI Foundry Hosted Agents via `scripts/register_agents.py`; Foundry manages the container lifecycle. The backend dispatches through the Foundry project endpoint using `agent_reference` routing and `DefaultAzureCredential` — no per-agent ACA URLs required
 
 Incorporates best practices from the
 [Anthropic prior-auth-review-skill](https://github.com/anthropics/healthcare/tree/main/prior-auth-review-skill):
@@ -100,6 +100,8 @@ prior-auth-maf/
 │       └── skills/synthesis-decision/SKILL.md
 │
 ├── frontend/              # Next.js UI
+├── scripts/               # Post-provision helpers
+│   └── register_agents.py # Registers all 4 agents with Foundry Hosted Agents
 ├── docs/                  # Architecture, deployment guide, API reference
 ├── infra/                 # Bicep / azd infrastructure
 └── docker-compose.yml     # Local: backend + 4 agents + frontend
@@ -152,7 +154,8 @@ The orchestrator coordinates four phases with four specialized agents:
   - Agents use the native MAF `from_agent_framework` pattern with `default_options={"response_format": PydanticModel}` for token-level structured output — no JSON fence parsing
   - The FastAPI backend is a **pure HTTP dispatcher** — it has no local AI runtime; all specialist reasoning runs in the four independent agent containers
   - Each agent container exposes `POST /responses` (Foundry Responses API protocol) and is independently versioned, deployable, and scalable
-  - The same `hosted_agents.py` dispatch layer works unchanged for both Docker Compose (container-to-container) and Azure Foundry (hosted agents over HTTPS)
+  - `hosted_agents.py` is a **two-mode dispatcher**: direct HTTP to agent containers (Docker Compose), or `agent_reference` routing through `{AZURE_AI_PROJECT_ENDPOINT}/responses` with `DefaultAzureCredential` (Foundry Hosted Agents)
+  - Agents are registered with Foundry via `scripts/register_agents.py` (postprovision hook in `azure.yaml`) — Foundry manages the ACA container lifecycle; no self-managed ACA modules in Bicep
 </details>
 
 <details>
