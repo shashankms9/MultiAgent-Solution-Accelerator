@@ -161,6 +161,107 @@ AZURE_STORAGE_ACCOUNT_URL=https://<account>.blob.core.windows.net
 # AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=https;...
 ```
 
+---
+
+## Azure API Management — MCP Gateway
+
+Currently each agent container calls its 3rd-party MCP servers directly over
+the public internet. In production this creates several operational risks:
+API keys scattered across Container App env vars, no central rate limiting,
+no fallback if a 3rd-party endpoint goes down, and no audit trail of MCP
+traffic.
+
+APIM solves all of this by sitting between the agent containers and every
+external MCP endpoint. **No agent code changes** — only the `MCP_*` env
+vars in the Container Apps are updated to point at APIM proxy URLs instead
+of the 3rd-party URLs directly.
+
+### Architecture
+
+```
+agent-clinical  ──┐
+agent-coverage  ──┤──► APIM (https://<apim>.azure-api.net/mcp/)
+agent-compliance──┤         │
+agent-synthesis ──┘         │── /icd10      → mcp.deepsense.ai/icd10_codes/mcp
+                            │── /pubmed     → pubmed.mcp.claude.com/mcp
+                            │── /trials     → mcp.deepsense.ai/clinical_trials/mcp
+                            │── /npi        → mcp.deepsense.ai/npi_registry/mcp
+                            └── /cms        → mcp.deepsense.ai/cms_coverage/mcp
+```
+
+### What APIM Adds
+
+| Capability | How |
+|---|---|
+| API key storage | Named Values backed by Key Vault — never in Container App env vars |
+| Rate limiting | `<rate-limit-by-key>` policy per MCP backend |
+| Circuit breaker | `<retry>` + mock policy fallback if 3rd-party goes down |
+| Upstream swap | Change the APIM backend URL without redeploying agents |
+| Centralised monitoring | All MCP call volume, latency and failures in one App Insights |
+| Network isolation | Agents call a private APIM endpoint; no direct internet egress needed |
+
+### MCP Streamable HTTP Caveat
+
+APIM buffers responses by default. MCP Streamable HTTP uses streaming POST
+responses, so each API must have the following policy to pass the stream
+through:
+
+```xml
+<inbound>
+  <set-backend-service base-url="https://mcp.deepsense.ai/icd10_codes" />
+  <!-- inject 3rd-party API key from Named Value if required -->
+  <!-- <set-header name="X-API-Key" exists-action="override">
+    <value>{{mcp-deepsense-api-key}}</value>
+  </set-header> -->
+</inbound>
+<backend>
+  <forward-request buffer-request-body="false" />
+</backend>
+<outbound>
+  <!-- do not buffer the streamed response -->
+</outbound>
+```
+
+`buffer-request-body="false"` is the critical line — without it APIM will
+buffer the full streaming response before forwarding it to the agent, which
+breaks MCP session establishment.
+
+### Bicep Changes
+
+Add `infra/modules/apim.bicep` with:
+
+1. `Microsoft.ApiManagement/service` resource (Developer or Standard tier)
+2. One `Microsoft.ApiManagement/service/backends` entry per MCP server
+3. One `Microsoft.ApiManagement/service/apis` entry per MCP server with the
+   streaming policy above
+4. Named Values for any 3rd-party API keys (reference Key Vault secrets)
+
+In `infra/main.bicep`, add the APIM module and update each agent Container
+App's `MCP_*` env vars:
+
+```bicep
+// Before (direct):
+{ name: 'MCP_ICD10_CODES', value: mcpIcd10CodesUrl }
+
+// After (via APIM):
+{ name: 'MCP_ICD10_CODES', value: '${apim.outputs.gatewayUrl}/mcp/icd10' }
+```
+
+### Agent Container App Env Var Changes
+
+| Variable | Current value | APIM value |
+|---|---|---|
+| `MCP_ICD10_CODES` | `https://mcp.deepsense.ai/icd10_codes/mcp` | `https://<apim>.azure-api.net/mcp/icd10` |
+| `MCP_PUBMED` | `https://pubmed.mcp.claude.com/mcp` | `https://<apim>.azure-api.net/mcp/pubmed` |
+| `MCP_CLINICAL_TRIALS` | `https://mcp.deepsense.ai/clinical_trials/mcp` | `https://<apim>.azure-api.net/mcp/trials` |
+| `MCP_NPI_REGISTRY` | `https://mcp.deepsense.ai/npi_registry/mcp` | `https://<apim>.azure-api.net/mcp/npi` |
+| `MCP_CMS_COVERAGE` | `https://mcp.deepsense.ai/cms_coverage/mcp` | `https://<apim>.azure-api.net/mcp/cms` |
+
+The agent code (`MCPStreamableHTTPTool` instantiation in each `main.py`)
+does not change at all — it reads the URL from the environment variable.
+
+---
+
 ## What NOT to Change
 
 - **Agent containers** — the four MAF Hosted Agent containers (clinical, coverage, compliance, synthesis) call the Foundry Responses API and return JSON. They are completely unaware of the backend's storage layer.
