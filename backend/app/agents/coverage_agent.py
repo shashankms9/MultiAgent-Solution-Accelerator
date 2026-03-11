@@ -28,4 +28,5 @@ async def run_coverage_review(request_data: dict, clinical_findings: dict) -> di
             "request": request_data,
             "clinical_findings": clinical_findings,
         },
+        foundry_agent_name=settings.HOSTED_AGENT_COVERAGE_NAME,
     )

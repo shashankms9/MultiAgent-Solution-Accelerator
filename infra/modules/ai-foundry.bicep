@@ -75,6 +75,19 @@ resource appInsightsConnection 'Microsoft.CognitiveServices/accounts/projects/co
   }
 }
 
+// ── Capability Host — required for Foundry Hosted Agents ───────────────────
+// Enables Foundry Agent Service to provision and manage ACA containers for
+// hosted agents deployed to this Foundry account. Must be created once per
+// Foundry account with enablePublicHostingEnvironment=true.
+resource capabilityHost 'Microsoft.CognitiveServices/accounts/capabilityHosts@2025-10-01-preview' = {
+  name: 'accountcaphost'
+  parent: foundryAccount
+  properties: {
+    capabilityHostKind: 'Agents'
+    enablePublicHostingEnvironment: true
+  }
+}
+
 // ── Outputs ─────────────────────────────────────────────────────────────────
 
 output accountName string = foundryAccount.name
@@ -83,3 +96,12 @@ output accountId string = foundryAccount.id
 output projectId string = foundryProject.id
 output endpoint string = foundryAccount.properties.endpoint
 output portalUrl string = 'https://ai.azure.com/manage/project?wsid=${foundryProject.id}'
+
+// Project endpoint: used by the backend orchestrator to invoke Foundry Hosted
+// Agents via the Responses API with agent_reference routing.
+// Format: https://<resource>.services.ai.azure.com/api/projects/<project>
+output projectEndpoint string = '${foundryAccount.properties.endpoint}api/projects/${foundryProject.name}'
+
+// Project system-assigned managed identity — needs AcrPull on ACR so Foundry
+// Agent Service can pull the 4 agent container images.
+output projectPrincipalId string = foundryProject.identity.principalId

@@ -41,4 +41,5 @@ async def run_synthesis_review(
             "coverage_result": coverage_result,
             "cpt_validation": cpt_validation,
         },
+        foundry_agent_name=settings.HOSTED_AGENT_SYNTHESIS_NAME,
     )

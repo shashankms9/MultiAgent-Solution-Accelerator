@@ -24,4 +24,5 @@ async def run_clinical_review(request_data: dict) -> dict:
         "clinical-reviewer-agent",
         settings.HOSTED_AGENT_CLINICAL_URL,
         request_data,
+        foundry_agent_name=settings.HOSTED_AGENT_CLINICAL_NAME,
     )

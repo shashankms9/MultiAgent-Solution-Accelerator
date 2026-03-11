@@ -564,10 +564,9 @@ hooks:
         $rgName           = azd env get-value AZURE_RESOURCE_GROUP
         $backendApp       = azd env get-value BACKEND_CONTAINER_APP_NAME
         $frontendApp      = azd env get-value FRONTEND_CONTAINER_APP_NAME
-        $agentClinicalApp  = azd env get-value AGENT_CLINICAL_CONTAINER_APP_NAME
-        $agentCoverageApp  = azd env get-value AGENT_COVERAGE_CONTAINER_APP_NAME
-        $agentComplianceApp = azd env get-value AGENT_COMPLIANCE_CONTAINER_APP_NAME
-        $agentSynthesisApp = azd env get-value AGENT_SYNTHESIS_CONTAINER_APP_NAME
+        $foundryAccountName = azd env get-value AI_FOUNDRY_ACCOUNT_NAME
+        $foundryProjectName = azd env get-value AI_FOUNDRY_PROJECT_NAME
+        $projectEndpoint    = azd env get-value AI_FOUNDRY_PROJECT_ENDPOINT
 
         Write-Host ""
         Write-Host "  Building backend on ACR ($acrName)..." -ForegroundColor White
@@ -621,14 +620,31 @@ hooks:
         Write-Host ""
         Write-Host "  Updating container apps with new images..." -ForegroundColor White
         $ErrorActionPreference = 'SilentlyContinue'
-        az containerapp update --name $backendApp        --resource-group $rgName --image "$acrEndpoint/backend:latest"          --output none 2>&1 | Out-Null
-        az containerapp update --name $frontendApp       --resource-group $rgName --image "$acrEndpoint/frontend:latest"         --output none 2>&1 | Out-Null
-        az containerapp update --name $agentClinicalApp  --resource-group $rgName --image "$acrEndpoint/agent-clinical:latest"   --output none 2>&1 | Out-Null
-        az containerapp update --name $agentCoverageApp  --resource-group $rgName --image "$acrEndpoint/agent-coverage:latest"   --output none 2>&1 | Out-Null
-        az containerapp update --name $agentComplianceApp --resource-group $rgName --image "$acrEndpoint/agent-compliance:latest" --output none 2>&1 | Out-Null
-        az containerapp update --name $agentSynthesisApp --resource-group $rgName --image "$acrEndpoint/agent-synthesis:latest"  --output none 2>&1 | Out-Null
+        az containerapp update --name $backendApp  --resource-group $rgName --image "$acrEndpoint/backend:latest"  --output none 2>&1 | Out-Null
+        az containerapp update --name $frontendApp --resource-group $rgName --image "$acrEndpoint/frontend:latest" --output none 2>&1 | Out-Null
         $ErrorActionPreference = 'Continue'
-        Write-Host "  All container apps updated" -ForegroundColor Green
+        Write-Host "  Backend and frontend container apps updated" -ForegroundColor Green
+
+        Write-Host ""
+        Write-Host "  Registering agents with Foundry Hosted Agents service..." -ForegroundColor White
+        # Ensure azure-ai-projects is available for agent registration
+        $null = python -c "import azure.ai.projects" 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "  Installing azure-ai-projects..." -ForegroundColor White
+            python -m pip install "azure-ai-projects>=2.0.0" --quiet
+        }
+        $deploymentName = azd env get-value AZURE_OPENAI_DEPLOYMENT_NAME 2>$null
+        if (-not $deploymentName) { $deploymentName = "gpt-4o" }
+        $appInsightsCs = azd env get-value APPLICATION_INSIGHTS_CONNECTION_STRING 2>$null
+        $env:AZURE_AI_PROJECT_ENDPOINT = $projectEndpoint
+        $env:AZURE_CONTAINER_REGISTRY_ENDPOINT = $acrEndpoint
+        $env:AI_FOUNDRY_ACCOUNT_NAME = $foundryAccountName
+        $env:AI_FOUNDRY_PROJECT_NAME = $foundryProjectName
+        $env:AZURE_OPENAI_DEPLOYMENT_NAME = $deploymentName
+        if ($appInsightsCs) { $env:APPLICATION_INSIGHTS_CONNECTION_STRING = $appInsightsCs }
+        python scripts/register_agents.py
+        if ($LASTEXITCODE -ne 0) { Write-Host "  ERROR: Agent registration failed!" -ForegroundColor Red; exit 1 }
+        Write-Host "  Agent registration complete" -ForegroundColor Green
 
         # Mark images as built so subsequent provisions use ACR images directly
         azd env set IMAGES_BUILT true
@@ -679,10 +695,9 @@ hooks:
         RG_NAME=$(azd env get-value AZURE_RESOURCE_GROUP)
         BACKEND_APP=$(azd env get-value BACKEND_CONTAINER_APP_NAME)
         FRONTEND_APP=$(azd env get-value FRONTEND_CONTAINER_APP_NAME)
-        AGENT_CLINICAL_APP=$(azd env get-value AGENT_CLINICAL_CONTAINER_APP_NAME)
-        AGENT_COVERAGE_APP=$(azd env get-value AGENT_COVERAGE_CONTAINER_APP_NAME)
-        AGENT_COMPLIANCE_APP=$(azd env get-value AGENT_COMPLIANCE_CONTAINER_APP_NAME)
-        AGENT_SYNTHESIS_APP=$(azd env get-value AGENT_SYNTHESIS_CONTAINER_APP_NAME)
+        FOUNDRY_ACCOUNT_NAME=$(azd env get-value AI_FOUNDRY_ACCOUNT_NAME)
+        FOUNDRY_PROJECT_NAME=$(azd env get-value AI_FOUNDRY_PROJECT_NAME)
+        PROJECT_ENDPOINT=$(azd env get-value AI_FOUNDRY_PROJECT_ENDPOINT)
 
         printf "\n${White}  Building backend on ACR (%s)...${NC}\n" "$ACR_NAME"
         az acr build --registry "$ACR_NAME" --image backend:latest --platform linux/amd64 ./backend --no-logs 2>/dev/null
@@ -715,13 +730,27 @@ hooks:
         printf "${Green}  agent-synthesis image built successfully${NC}\n"
 
         printf "\n${White}  Updating container apps with new images...${NC}\n"
-        az containerapp update --name "$BACKEND_APP"         --resource-group "$RG_NAME" --image "$ACR_ENDPOINT/backend:latest"          --output none 2>/dev/null
-        az containerapp update --name "$FRONTEND_APP"        --resource-group "$RG_NAME" --image "$ACR_ENDPOINT/frontend:latest"         --output none 2>/dev/null
-        az containerapp update --name "$AGENT_CLINICAL_APP"  --resource-group "$RG_NAME" --image "$ACR_ENDPOINT/agent-clinical:latest"   --output none 2>/dev/null
-        az containerapp update --name "$AGENT_COVERAGE_APP"  --resource-group "$RG_NAME" --image "$ACR_ENDPOINT/agent-coverage:latest"   --output none 2>/dev/null
-        az containerapp update --name "$AGENT_COMPLIANCE_APP" --resource-group "$RG_NAME" --image "$ACR_ENDPOINT/agent-compliance:latest" --output none 2>/dev/null
-        az containerapp update --name "$AGENT_SYNTHESIS_APP" --resource-group "$RG_NAME" --image "$ACR_ENDPOINT/agent-synthesis:latest"  --output none 2>/dev/null
-        printf "${Green}  All container apps updated${NC}\n"
+        az containerapp update --name "$BACKEND_APP"  --resource-group "$RG_NAME" --image "$ACR_ENDPOINT/backend:latest"  --output none 2>/dev/null
+        az containerapp update --name "$FRONTEND_APP" --resource-group "$RG_NAME" --image "$ACR_ENDPOINT/frontend:latest" --output none 2>/dev/null
+        printf "${Green}  Backend and frontend container apps updated${NC}\n"
+
+        printf "\n${White}  Registering agents with Foundry Hosted Agents service...${NC}\n"
+        # Ensure azure-ai-projects is available for agent registration
+        if ! python -c "import azure.ai.projects" 2>/dev/null; then
+            printf "${White}  Installing azure-ai-projects...${NC}\n"
+            python -m pip install "azure-ai-projects>=2.0.0" --quiet
+        fi
+        DEPLOYMENT_NAME=$(azd env get-value AZURE_OPENAI_DEPLOYMENT_NAME 2>/dev/null || echo "gpt-4o")
+        APP_INSIGHTS_CS=$(azd env get-value APPLICATION_INSIGHTS_CONNECTION_STRING 2>/dev/null || true)
+        export AZURE_AI_PROJECT_ENDPOINT="$PROJECT_ENDPOINT"
+        export AZURE_CONTAINER_REGISTRY_ENDPOINT="$ACR_ENDPOINT"
+        export AI_FOUNDRY_ACCOUNT_NAME="$FOUNDRY_ACCOUNT_NAME"
+        export AI_FOUNDRY_PROJECT_NAME="$FOUNDRY_PROJECT_NAME"
+        export AZURE_OPENAI_DEPLOYMENT_NAME="$DEPLOYMENT_NAME"
+        [ -n "$APP_INSIGHTS_CS" ] && export APPLICATION_INSIGHTS_CONNECTION_STRING="$APP_INSIGHTS_CS"
+        python scripts/register_agents.py
+        if [ $? -ne 0 ]; then printf "${Red}  ERROR: Agent registration failed!${NC}\n"; exit 1; fi
+        printf "${Green}  Agent registration complete${NC}\n"
 
         azd env set IMAGES_BUILT true
 

@@ -23,4 +23,5 @@ async def run_compliance_review(request_data: dict) -> dict:
         "compliance-agent",
         settings.HOSTED_AGENT_COMPLIANCE_URL,
         request_data,
+        foundry_agent_name=settings.HOSTED_AGENT_COMPLIANCE_NAME,
     )
