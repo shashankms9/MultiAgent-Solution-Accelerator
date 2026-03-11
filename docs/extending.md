@@ -28,44 +28,62 @@ class NewAgentResult(BaseModel):
 ```python
 import os
 from pathlib import Path
-import httpx
-from azure.ai.agentserver.agentframework import AzureOpenAIResponsesClient, from_agent_framework
-from agent_framework import FileAgentSkillsProvider, MCPStreamableHTTPTool
-from .schemas import NewAgentResult
 
-# MCP client with required User-Agent (only needed if this agent uses MCP)
+import httpx
+from agent_framework import FileAgentSkillsProvider, MCPStreamableHTTPTool
+from agent_framework.azure import AzureOpenAIResponsesClient
+from azure.ai.agentserver.agentframework import from_agent_framework
+from azure.identity import DefaultAzureCredential
+from dotenv import load_dotenv
+
+from schemas import NewAgentResult
+
+load_dotenv(override=True)  # override=True required for Foundry-deployed env vars
+
+# DeepSense CloudFront routes on User-Agent — omit this client if no MCP
 _MCP_HTTP_CLIENT = httpx.AsyncClient(headers={"User-Agent": "claude-code/1.0"})
 
-new_tool = MCPStreamableHTTPTool(
-    name="new-server",
-    url=os.environ["MCP_NEW_SERVER"],
-    http_client=_MCP_HTTP_CLIENT,
-)  # omit if no MCP
 
-skills_provider = FileAgentSkillsProvider(
-    skill_paths=str(Path(__file__).parent / "skills")
-)
+def main() -> None:
+    new_tool = MCPStreamableHTTPTool(
+        name="new-server",
+        description="Brief description shown to the model",
+        url=os.environ["MCP_NEW_SERVER"],
+        http_client=_MCP_HTTP_CLIENT,
+        load_prompts=False,
+    )  # omit if no MCP
 
-agent = (
-    AzureOpenAIResponsesClient(
-        endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
-        model=os.environ["AZURE_OPENAI_DEPLOYMENT"],
-        agent_name="new-agent",
-        skills_provider=skills_provider,
+    skills_provider = FileAgentSkillsProvider(
+        skill_paths=str(Path(__file__).parent / "skills")
     )
-    .as_agent(
+
+    agent = AzureOpenAIResponsesClient(
+        project_endpoint=os.environ["AZURE_AI_PROJECT_ENDPOINT"],
+        deployment_name=os.environ["AZURE_OPENAI_DEPLOYMENT_NAME"],
+        credential=DefaultAzureCredential(),
+    ).as_agent(
+        name="new-agent",
+        instructions="You are a ... agent for prior authorization requests.",
         tools=[new_tool],                             # omit if no MCP
+        context_providers=[skills_provider],
         default_options={"response_format": NewAgentResult},
     )
-)
 
-app = from_agent_framework(agent).run()
+    from_agent_framework(agent).run()
+
+
+if __name__ == "__main__":
+    main()
 ```
 
 Key conventions:
 - `schemas.py` declares the Pydantic output model; MAF enforces it at inference time (no JSON parsing needed)
-- `FileAgentSkillsProvider` loads SKILL.md files from the `skills/` subdirectory
-- `MCPStreamableHTTPTool` with a shared `httpx.AsyncClient` injects the `User-Agent` header automatically
+- Import `AzureOpenAIResponsesClient` from `agent_framework.azure`, **not** from `azure.ai.agentserver`
+- Constructor takes `project_endpoint` + `deployment_name` + `credential=DefaultAzureCredential()` — no API keys
+- `name`, `instructions`, `tools`, `context_providers`, and `default_options` all go on `.as_agent()`, not the constructor
+- `FileAgentSkillsProvider` is passed via `context_providers=[skills_provider]` in `.as_agent()`
+- `MCPStreamableHTTPTool` with a shared `httpx.AsyncClient` injects the `User-Agent` header automatically; `load_prompts=False` prevents the agent server from trying to fetch MCP prompt lists on startup
+- `load_dotenv(override=True)` is required — `override=True` ensures Foundry-injected env vars take precedence
 - `from_agent_framework(agent).run()` exposes the agent as a `POST /responses` HTTP endpoint
 - Agents that need upstream results receive them as JSON in the request payload
 
@@ -103,14 +121,21 @@ Before completing, verify:
 
 If the agent uses MCP servers, add the `MCPStreamableHTTPTool` in `main.py` (already shown in Step 1) and expose the URL via an environment variable:
 
-```python
+```yaml
 # docker-compose.yml (local)
 new-agent:
   environment:
     MCP_NEW_SERVER: https://mcp.example.com/new-server/mcp
 ```
 
-Add the same env var to the Azure Bicep/Container App parameters for production.
+For production (Azure), add the env var directly to the agent's `env:` block in `infra/main.bicep` — **not** as a Bicep parameter (MCP URLs have sensible defaults and don't need to be parameterised unless overriding):
+
+```bicep
+// infra/main.bicep — inside the agentNew module env array
+{ name: 'MCP_NEW_SERVER', value: mcpNewServerUrl }
+```
+
+Add the corresponding `param mcpNewServerUrl string = 'https://mcp.example.com/new-server/mcp'` near the other MCP URL params at the top of `main.bicep`.
 
 **Step 4 — Orchestrator** (`backend/app/agents/orchestrator.py`):
 
@@ -190,8 +215,10 @@ Update `_build_audit_trail()`, `_generate_audit_justification()`, and
 | `agents/new-agent/schemas.py` | New file: Pydantic output model |
 | `agents/new-agent/skills/new-agent/SKILL.md` | New file: skill instructions |
 | `agents/new-agent/Dockerfile` | New file: container image |
-| `agents/new-agent/requirements.txt` | New file: `azure-ai-agentserver`, `httpx`, `pydantic` |
-| `docker-compose.yml` | Add new agent container + env vars |
+| `agents/new-agent/requirements.txt` | New file: `agent-framework`, `azure-ai-agentserver`, `azure-ai-projects`, `azure-identity`, `httpx`, `python-dotenv` |
+| `docker-compose.yml` | Add new agent service + env vars |
+| `infra/main.bicep` | Add agent Container App module + env vars + role assignment principal ID |
+| `azure.yaml` | Add `az acr build` + `az containerapp update` calls in postprovision hook |
 | `backend/app/config.py` | Add `NEW_AGENT_URL` setting |
 | `backend/app/services/hosted_agents.py` | Add dispatch call for new agent |
 | `backend/app/agents/orchestrator.py` | Import, phase registration, synthesis prompt, SSE events |
@@ -211,16 +238,22 @@ Four files need changes:
 ```python
 cpt_tool = MCPStreamableHTTPTool(
     name="cpt-validator",
+    description="Validate CPT/HCPCS procedure codes and look up RVU values",
     url=os.environ["MCP_CPT_VALIDATOR"],
     http_client=_MCP_HTTP_CLIENT,          # reuse the shared client
+    load_prompts=False,
 )
 
-agent = (
-    AzureOpenAIResponsesClient(...)
-    .as_agent(
-        tools=[..., cpt_tool],             # add to existing tools list
-        default_options={"response_format": ClinicalResult},
-    )
+agent = AzureOpenAIResponsesClient(
+    project_endpoint=os.environ["AZURE_AI_PROJECT_ENDPOINT"],
+    deployment_name=os.environ["AZURE_OPENAI_DEPLOYMENT_NAME"],
+    credential=DefaultAzureCredential(),
+).as_agent(
+    name="clinical-reviewer-agent",
+    instructions="...",
+    tools=[..., cpt_tool],             # add to existing tools list
+    context_providers=[skills_provider],
+    default_options={"response_format": ClinicalResult},
 )
 ```
 
@@ -245,9 +278,9 @@ clinical-agent:
 **Architecture summary:**
 
 ```
-agnets/<agent>/main.py           → MCPStreamableHTTPTool instantiation
+agents/<agent>/main.py               → MCPStreamableHTTPTool instantiation
 docker-compose.yml                   → MCP URL env var (local)
-Azure Container App env vars         → MCP URL env var (production)
+infra/main.bicep                     → MCP URL env var (production, agent env: block)
 agents/<agent>/skills/*/SKILL.md     → Usage instructions for the agent
 backend/app/agents/orchestrator.py   → Pipeline phases (only if adding a new agent role)
 ```
@@ -290,7 +323,13 @@ import httpx
 from agent_framework import MCPStreamableHTTPTool
 
 http_client = httpx.AsyncClient(headers={"User-Agent": "claude-code/1.0"})
-mcp_tool = MCPStreamableHTTPTool(name="npi", url=NPI_URL, http_client=http_client)
+mcp_tool = MCPStreamableHTTPTool(
+    name="npi",
+    description="Validate NPI numbers",
+    url=NPI_URL,
+    http_client=http_client,
+    load_prompts=False,
+)
 
 async with mcp_tool:
     result = await mcp_tool.session.call_tool("npi_validate", {"npi": "1234567893"})
