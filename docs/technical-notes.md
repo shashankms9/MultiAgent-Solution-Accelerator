@@ -167,11 +167,50 @@ transbronchial lung biopsy case:
 
 ## Observability
 
-The backend sends traces to **Azure Application Insights** via
-`azure-monitor-opentelemetry`. Each agent container is also visible
-in Foundry's built-in hosted agent evaluation dashboard.
+All five processes — the FastAPI backend and all four agent containers — export
+OpenTelemetry traces and metrics to **Azure Application Insights** via
+`azure-monitor-opentelemetry`. Agent traces are also visible in the Foundry
+portal's built-in Traces view when App Insights is linked to the Foundry project.
 
-### Trace Hierarchy
+### Process Roles
+
+| Process | `OTEL_SERVICE_NAME` | What it instruments |
+|---------|---------------------|---------------------|
+| FastAPI backend | `prior-auth-backend` | HTTP requests/responses, outgoing httpx calls to agents, logs, exceptions, live metrics |
+| Clinical agent | `agent-clinical` | MAF `invoke_agent`, `chat`, `execute_tool` spans, token metrics |
+| Coverage agent | `agent-coverage` | Same as above |
+| Compliance agent | `agent-compliance` | Same as above |
+| Synthesis agent | `agent-synthesis` | Same as above |
+
+Each process calls `configure_azure_monitor()` before any agents start.
+Agent containers additionally call `enable_instrumentation()` to activate
+MAF's built-in OTel instrumentation. The backend's `observability.py` does
+**not** call `enable_instrumentation()` — that function is MAF-specific and
+only valid in agent processes.
+
+### Application Map
+
+Because `OTEL_SERVICE_NAME` is set in every process, App Insights
+**Application Map** renders a clean 5-node topology:
+
+```
+prior-auth-backend
+  ├──► agent-compliance
+  ├──► agent-clinical
+  ├──► agent-coverage
+  └──► agent-synthesis
+```
+
+Edges are drawn from the backend's auto-instrumented outgoing httpx dependency
+spans. W3C trace context headers propagate across process boundaries so App
+Insights stitches the end-to-end call graph automatically — no manual
+correlation ID wiring is needed.
+
+`OTEL_SERVICE_NAME` is set via `os.environ.setdefault(...)` so an explicit
+env var configured in the Container App (e.g., via Bicep or the ACA portal)
+always overrides the in-code default.
+
+### Trace Hierarchy (backend layer)
 
 ```
 prior_auth_review (request_id)
@@ -185,7 +224,19 @@ prior_auth_review (request_id)
   └── phase_4_audit
 ```
 
-### Custom Span Attributes
+### MAF Spans (agent layer — all four containers)
+
+| Span | Emitted by | Key attributes |
+|------|-----------|----------------|
+| `invoke_agent` | MAF | agent name, status |
+| `chat` | MAF | model deployment, turn index |
+| `execute_tool` | MAF | tool name, tool result status |
+
+These spans are children of the backend `*_agent_dispatch` dependency spans,
+creating an end-to-end trace from HTTP request → backend orchestration → agent
+tool calls.
+
+### Custom Backend Span Attributes
 
 | Span | Key attributes |
 |------|---------------|
@@ -195,11 +246,17 @@ prior_auth_review (request_id)
 | `phase_3_synthesis` | `recommendation`, `confidence` |
 | `phase_4_audit` | `confidence`, `confidence_level` |
 
-Enable by setting:
+### Enabling Observability
+
+Set the same connection string in all five containers (Bicep injects this
+automatically from the shared `monitoring` module output):
 
 ```env
 APPLICATION_INSIGHTS_CONNECTION_STRING=InstrumentationKey=<key>;IngestionEndpoint=...
 ```
+
+Locally (docker-compose), the variable is intentionally absent — all
+observability blocks are no-ops so the app runs without App Insights.
 
 ---
 

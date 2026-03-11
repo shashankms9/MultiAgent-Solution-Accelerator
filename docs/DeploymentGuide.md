@@ -435,9 +435,31 @@ Or find them in the [Azure Portal](https://portal.azure.com/) under your resourc
 If you configured Azure Application Insights:
 
 1. Open [Azure Portal](https://portal.azure.com/) → your Application Insights resource
-2. Navigate to **Application Map** to see the backend service topology
-3. Use **Transaction Search** to find review traces
-4. Check **Live Metrics** during an active review to see real-time telemetry
+2. Navigate to **Application Map** — you should see five labeled nodes:
+
+   ```
+   prior-auth-backend
+     ├──► agent-compliance
+     ├──► agent-clinical
+     ├──► agent-coverage
+     └──► agent-synthesis
+   ```
+
+   Each node uses the `OTEL_SERVICE_NAME` set in that container. Edges are
+   drawn from the backend's outgoing HTTP dependency spans. If nodes appear
+   as random hostnames instead of these names, the env var wasn't picked up —
+   redeploy or set `OTEL_SERVICE_NAME` explicitly in the Container App env vars.
+
+3. Select any node and choose **Investigate performance** or **Investigate
+   failures** to drill into per-component latency and error rates.
+
+4. Use **Transaction Search** or **End-to-end transaction details** to follow
+   a single PA review across all five processes — backend orchestration spans
+   stitch to the MAF `invoke_agent` / `chat` / `execute_tool` spans inside
+   each agent container via W3C trace context headers.
+
+5. Check **Live Metrics** during an active review to see real-time request
+   rates, dependency durations, and exceptions across all containers.
 
 ### 5.4 Register Agents in Foundry Control Plane (Optional)
 
