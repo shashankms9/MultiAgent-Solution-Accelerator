@@ -1,147 +1,129 @@
 # Technical Notes
 
-## Windows Claude SDK Patches (`app/patches/__init__.py`)
+## Architecture Overview
 
-On Windows, the Claude Agent SDK encounters three issues when spawning the
-Claude Code CLI as a subprocess. The `app/patches/__init__.py` module fixes
-all three, applied automatically at server startup in `main.py`.
+The backend is a **pure HTTP dispatcher** (FastAPI). It has no local AI runtime.
+All specialist reasoning runs in four independent Foundry Hosted Agent containers.
 
-### Patch 1 — `.CMD` Batch File Bypass
+```
+Frontend (Next.js / ACA)
+  └── POST /api/review/stream   (SSE)
+        └── FastAPI Backend / Orchestrator (ACA)
+              ├── POST http://agent-clinical/   → Clinical Reviewer Container
+              ├── POST http://agent-compliance/ → Compliance Validation Container
+              ├── POST http://agent-coverage/   → Coverage Assessment Container
+              └── POST http://agent-synthesis/  → Synthesis Decision Container
+```
 
-On Windows, the Claude Code CLI is installed as a `.CMD` batch file wrapper.
-When Python's `subprocess` module runs a `.CMD` file, it routes through
-`cmd.exe /c`, which interprets newlines and special characters inside
-`--system-prompt` arguments as command separators.
-
-**Fix:** Monkey-patches `SubprocessCLITransport._build_command` to replace
-the `.CMD` wrapper with a direct `node.exe cli.js` invocation.
-
-### Patch 2 — API Credential Override + Foundry Auth
-
-When running inside a Claude Code editor session, the environment inherits
-invalid local-proxy credentials.
-
-**Fix:** Overrides `ANTHROPIC_API_KEY` and `ANTHROPIC_BASE_URL` with the
-real Microsoft Foundry credentials, and sets Foundry-specific env vars.
-
-### Patch 3 — Model Mapping
-
-The Claude Agent SDK reads the model from `CLAUDE_AGENT_MODEL`, not `CLAUDE_MODEL`.
-
-**Fix:** Maps `CLAUDE_MODEL` to `CLAUDE_AGENT_MODEL`.
-
-### Patch 4 — Windows Asyncio Event Loop (ProactorEventLoop)
-
-On Windows with `--reload`, uvicorn may use `SelectorEventLoop` which doesn't
-support `asyncio.create_subprocess_exec()`.
-
-**Fix:** Sets `asyncio.WindowsProactorEventLoopPolicy()`.
-
-### When Patches Activate
-
-| Patch | Activates when | In Linux/Docker? |
-|-------|---------------|-----------------|
-| CMD bypass | `os.name == "nt"` and `.CMD` file detected | No |
-| API credentials + Foundry auth | `AZURE_FOUNDRY_API_KEY` is set | No |
-| Model mapping | `CLAUDE_MODEL` is set | Yes (harmless) |
-| ProactorEventLoop | `os.name == "nt"` | No |
+Each agent container runs **Microsoft Agent Framework (MAF)** via
+`azure.ai.agentserver.agentframework.from_agent_framework`, exposes an HTTP
+endpoint, and is deployed to **Azure AI Foundry** as a Hosted Agent.
 
 ---
 
 ## MCP Header Injection
 
 The DeepSense-hosted MCP servers require `User-Agent: claude-code/1.0` due
-to CloudFront routing rules. This header is injected via:
-
-- **`McpHttpServerConfig.headers`** — for Claude SDK agents (production path)
-- **`httpx.AsyncClient` custom headers** — for `MCPStreamableHTTPTool` (model-agnostic path)
-
-Azure OpenAI's Responses API native MCP support does **not** work because
-Azure's proxy does not forward the `User-Agent` header.
-
----
-
-## Structured Output
-
-Agents are configured with structured output via the `output_format` option
-in `ClaudeAgentOptions`. This constrains the agent's response to match the
-Pydantic model's JSON schema.
-
-### How It Works
-
-The `pydantic_to_output_format()` helper in `_parse.py` converts a Pydantic
-model to the format the SDK expects:
+to CloudFront routing rules. This is injected in each agent container via a
+single shared `httpx.AsyncClient`:
 
 ```python
-from app.agents._parse import pydantic_to_output_format
-from app.models.schemas import ClinicalResult
+_MCP_HTTP_CLIENT = httpx.AsyncClient(headers={"User-Agent": "claude-code/1.0"})
 
-output_format = pydantic_to_output_format(ClinicalResult)
-# Returns: {"type": "json_schema", "schema": <JSON Schema dict>}
-
-agent = ClaudeAgent(
-    instructions="...",
-    default_options={
-        "output_format": output_format,
-        "permission_mode": "bypassPermissions",
-    },
+icd10_tool = MCPStreamableHTTPTool(
+    name="icd10-codes",
+    url=os.environ["MCP_ICD10_CODES"],
+    http_client=_MCP_HTTP_CLIENT,
 )
 ```
 
-### JSON Output Enforcement
+The MCP servers are **self-hosted** — no Foundry Tool MCP registration needed.
+The containers connect directly to the MCP server URLs via environment variables.
 
-The `output_format` option is passed to the Claude Code CLI as `--json-schema`,
-constraining the model to produce valid JSON before the response completes.
-Since PR #4137, `structured_output` is properly propagated to `AgentResponse.value`.
+---
 
-### Resilience Mechanisms
+## Agent Skills
+
+Each agent loads its SKILL.md via `FileAgentSkillsProvider`:
+
+```python
+skills_provider = FileAgentSkillsProvider(
+    skill_paths=str(Path(__file__).parent / "skills")
+)
+```
+
+SKILL.md files live alongside the agent:
+
+```
+agents/
+  clinical/skills/clinical-review/SKILL.md
+  coverage/skills/coverage-assessment/SKILL.md
+  compliance/skills/compliance-review/SKILL.md
+  synthesis/skills/synthesis-decision/SKILL.md
+```
+
+---
+
+## Structured Output and Response Normalization
+
+The `pydantic_to_output_format()` helper in `backend/app/agents/_parse.py`
+converts a Pydantic schema to a JSON schema dict for validation.
+`parse_json_response()` normalizes the hosted agent HTTP response back
+into the expected dict structure, accepting common payload envelopes:
+
+- `{ "result": { ... } }`
+- `{ "output": { ... } }`
+- `{ "data": { ... } }`
+- `{ ... }` (already-flat payload)
+
+### Parse Resilience
+
+| Strategy | Method |
+|----------|--------|
+| Primary  | `response.value` / `response.structured_output` |
+| Fallback 1 | Markdown code fence extraction |
+| Fallback 2 | Brace-matched backward extraction |
+| Fallback 3 | First-`{` to last-`}` substring |
+
+---
+
+## Orchestration Flow
+
+```
+Phase 1 (parallel):   Compliance + Clinical agents
+Phase 2 (sequential): Coverage agent (receives clinical findings)
+Phase 3:              Synthesis agent (receives all three results)
+Phase 4:              Audit trail + PDF generation
+```
+
+### Resilience
 
 | Mechanism | Where | What it does |
 |-----------|-------|-------------|
-| `max_turns` | Agent config | Ensures agents have enough turns (15 for Clinical/Coverage, 5 for Compliance/Synthesis) |
 | Result validation | `_validate_agent_result()` | Checks expected top-level keys |
 | Automatic retry | `_safe_run()` | Retries once if validation fails |
-| SSE status warnings | Phase events | Reports `"status": "warning"` for incomplete results |
-| Tool result normalization | `_normalize_tool_result()` | Maps non-standard status values to pass/fail/warning |
+| SSE status warnings | Phase events | Reports status "warning" for incomplete results |
+| Tool result normalization | `_normalize_tool_result()` | Maps non-standard status values |
 
-### Parse Strategies
+### Decision Gate (LENIENT MODE)
 
-`parse_json_response()` uses a multi-strategy approach:
+Gate 1: Provider NPI verification → Gate 2: Code validation → Gate 3: Medical necessity
 
-| Strategy | Method | Status |
-|----------|--------|--------|
-| **Strategy 0** | `response.value` / `response.structured_output` | **Primary path** |
-| Strategy 1 | Markdown code fence extraction | Defense-in-depth fallback |
-| Strategy 2 | Brace-matched backward extraction | Fallback |
-| Strategy 3 | First-`{` to last-`}` substring | Legacy fallback |
+Default to **PEND** at any uncertain gate. Never DENY in LENIENT mode.
 
 ---
 
-## Prompt Caching
+## Decision and Notification Flow
 
-Agent instructions consume ~1,200-1,500 input tokens per agent (~5,000 total
-per review). In skills mode, prompts are loaded on demand. Anthropic's
-prompt caching can reduce this cost by ~90%.
-
----
-
-## Decision & Notification Flow
-
-1. Review completes → stored in-memory
+1. Review completes → stored in-memory (reviewed via `GET /api/reviews`)
 2. Frontend shows Accept / Override panel
-3. `POST /api/decision` validates review, prevents double-decisions (409)
+3. `POST /api/decision` prevents double-decisions (409)
 4. Generates thread-safe authorization number (`PA-YYYYMMDD-XXXXX`)
 5. Produces notification letter (approval or pend) in text and PDF
-6. PDF available for preview and download
 
-**Notification letter types:**
+**Letter types:**
 - **Approval** — auth number, 90-day validity, coverage criteria met, clinical rationale
 - **Pend** — confidence level, missing documentation, 30-day deadline, appeal rights
-
-**PDF generation** (`fpdf2`):
-- Custom `_LetterPDF` subclass with branded header/footer
-- Color-coded titles: green for approvals, amber for pends
-- Base64-encoded for JSON transport
 
 ---
 
@@ -170,57 +152,45 @@ transbronchial lung biopsy case:
 
 ---
 
-## Observability — Azure Application Insights
+## Observability
 
-The backend integrates with **Azure Application Insights** via
-`azure-monitor-opentelemetry`.
+The backend sends traces to **Azure Application Insights** via
+`azure-monitor-opentelemetry`. Each agent container is also visible
+in Foundry's built-in hosted agent evaluation dashboard.
 
 ### Trace Hierarchy
 
 ```
 prior_auth_review (request_id)
   ├── phase_1_parallel
-  │     ├── compliance_agent
-  │     └── clinical_agent
+  │     ├── compliance_agent_dispatch
+  │     └── clinical_agent_dispatch
   ├── phase_2_coverage
-  │     └── coverage_agent
+  │     └── coverage_agent_dispatch
   ├── phase_3_synthesis
-  │     └── synthesis_agent
+  │     └── synthesis_agent_dispatch
   └── phase_4_audit
 ```
 
 ### Custom Span Attributes
 
-| Span | Attributes |
-|------|-----------|
+| Span | Key attributes |
+|------|---------------|
 | `prior_auth_review` | `request_id` |
 | `phase_1_parallel` | `compliance_status`, `clinical_status` |
 | `phase_2_coverage` | `coverage_status` |
 | `phase_3_synthesis` | `recommendation`, `confidence` |
 | `phase_4_audit` | `confidence`, `confidence_level` |
 
-### Enabling Observability
+Enable by setting:
 
 ```env
 APPLICATION_INSIGHTS_CONNECTION_STRING=InstrumentationKey=<key>;IngestionEndpoint=...
 ```
 
-### What You See in Application Insights
-
-- **Application Map** — backend with dependency arrows to AI Foundry and MCP servers
-- **Transaction Search** — filter by `prior_auth_review`
-- **Live Metrics** — real-time request rate and latency
-- **Performance** — percentile latency by phase
-
 ---
 
-## Hosted Agent Dispatch
-
-When `USE_HOSTED_AGENTS=true`, the backend keeps the same orchestration flow but
-replaces in-process specialist execution with outbound HTTP calls to hosted
-agent endpoints.
-
-### Supported endpoint settings
+## Hosted Agent Dispatch Settings
 
 | Agent | Environment variable |
 |-------|----------------------|
@@ -229,87 +199,22 @@ agent endpoints.
 | Coverage | `HOSTED_AGENT_COVERAGE_URL` |
 | Synthesis | `HOSTED_AGENT_SYNTHESIS_URL` |
 
-Shared request behavior is controlled with:
+Shared request configuration:
 
-- `HOSTED_AGENT_TIMEOUT_SECONDS`
-- `HOSTED_AGENT_AUTH_HEADER`
-- `HOSTED_AGENT_AUTH_SCHEME`
-- `HOSTED_AGENT_AUTH_TOKEN`
-
-### Response normalization
-
-Hosted responses are normalized so the orchestrator can keep the same contract
-used by the frontend and decision APIs. The backend accepts any of these common
-payload envelopes:
-
-- `{ "result": { ... } }`
-- `{ "output": { ... } }`
-- `{ "data": { ... } }`
-- `{ ... }` (already-flat payload)
-
-This lets hosted agents evolve independently without forcing frontend or audit
-pipeline changes.
-
-### Operational boundary
-
-- **Backend-owned:** retries, phase status, SSE events, review persistence,
-  audit trail generation, PDF generation
-- **Hosted-agent-owned:** specialist reasoning runtime, hosted evaluation, and
-  per-agent lifecycle visibility inside Foundry
+| Setting | Default |
+|---------|---------|
+| `HOSTED_AGENT_TIMEOUT_SECONDS` | 180 |
+| `HOSTED_AGENT_AUTH_HEADER` | `Authorization` |
+| `HOSTED_AGENT_AUTH_SCHEME` | `Bearer` |
+| `HOSTED_AGENT_AUTH_TOKEN` | *(empty — Foundry injects at deploy time)* |
 
 ---
 
-## Optional Foundry Registration
+## Agent IDs (Foundry)
 
-If you keep the local/in-process mode or expose per-agent HTTP endpoints for
-evaluation, you can still register them as **custom external agents** in
-Foundry Control Plane for centralized observability and governance.
-
-### Agent IDs
-
-| Agent ID | Display Name | File |
-|----------|-------------|------|
-| `compliance-agent` | Compliance Validation Agent | `compliance_agent.py` |
-| `clinical-reviewer-agent` | Clinical Reviewer Agent | `clinical_agent.py` |
-| `coverage-assessment-agent` | Coverage Assessment Agent | `coverage_agent.py` |
-| `synthesis-decision-agent` | Synthesis Decision Agent | `orchestrator.py` |
-
-### Prerequisites
-
-1. Foundry project at [ai.azure.com](https://ai.azure.com/)
-2. AI Gateway configured
-3. Application Insights linked (same resource as backend)
-4. Deployed backend reachable from Foundry
-
-### Registration Steps
-
-See [Register and manage custom agents](https://learn.microsoft.com/en-us/azure/ai-foundry/control-plane/register-custom-agent).
-
----
-
-## Known Limitations
-
-### Gap 1 — MAF `ClaudeAgent` Inheritance (Bug Filed)
-
-`ClaudeAgent` inherits from `BaseAgent` instead of `Agent`, skipping
-`AgentTelemetryLayer`. Agent-level spans don't appear in App Insights.
-
-### Gap 2 — Claude CLI/Agent SDK Tracing (Feature Request Filed)
-
-The Claude Agent SDK has no OpenTelemetry span support. No visibility
-into agent internals.
-
-### Gap 3 — Trace Context Propagation
-
-Requires both Gap 1 and Gap 2 fixes. Without it, spans float as separate traces.
-
-### What Works Today
-
-| Telemetry | Status |
-|-----------|--------|
-| Custom orchestrator phase spans | Working |
-| FastAPI request traces | Working |
-| Application Map, Live Metrics | Working |
-| Agent-level spans | Blocked by Gap 1 |
-| Agent internal spans | Blocked by Gap 2 |
-| Connected trace tree | Blocked by Gap 3 |
+| Agent ID | Module |
+|----------|--------|
+| `compliance-agent` | `agents/compliance/main.py` |
+| `clinical-reviewer-agent` | `agents/clinical/main.py` |
+| `coverage-assessment-agent` | `agents/coverage/main.py` |
+| `synthesis-decision-agent` | `agents/synthesis/main.py` |

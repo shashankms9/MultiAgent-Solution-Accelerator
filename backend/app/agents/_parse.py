@@ -14,7 +14,7 @@ def pydantic_to_output_format(
     model_class: type[BaseModel],
     exclude_fields: tuple[str, ...] = ("agent_name", "checks_performed"),
 ) -> dict[str, Any]:
-    """Convert a Pydantic model class to a ClaudeAgent output_format dict.
+    """Convert a Pydantic model class to an output_format dict for the agent.
 
     The agent framework's ``output_format`` option accepts::
 
@@ -38,12 +38,7 @@ def pydantic_to_output_format(
     Usage::
 
         from app.models.schemas import ComplianceResult
-        agent = ClaudeAgent(
-            instructions="...",
-            default_options={
-                "output_format": pydantic_to_output_format(ComplianceResult),
-            },
-        )
+        output_format = pydantic_to_output_format(ComplianceResult)
     """
     import copy
 

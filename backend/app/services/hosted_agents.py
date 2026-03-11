@@ -1,9 +1,8 @@
 """Helpers for invoking externally hosted agent runtimes.
 
-This module provides the lowest-risk migration seam for moving the
-specialized agents from local in-process ClaudeAgent execution to
-HTTP-addressable hosted runtimes while preserving the existing backend
-contracts and orchestration flow.
+This module provides the HTTP dispatch layer for forwarding requests
+from the orchestrator backend to the four specialized hosted agent
+containers (clinical, coverage, compliance, synthesis).
 """
 
 import logging

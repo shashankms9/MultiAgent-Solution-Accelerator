@@ -1,11 +1,7 @@
 """Azure Application Insights observability via OpenTelemetry.
 
-Uses Microsoft Agent Framework's built-in OpenTelemetry support
-(Option 1 — explicit Azure Monitor setup) to export traces, metrics,
-and logs to Application Insights.
-
-Reference:
-  https://learn.microsoft.com/en-us/agent-framework/agents/observability
+Configures Azure Monitor to export traces, metrics, and logs from the
+FastAPI backend to Application Insights.
 """
 
 import logging
@@ -34,18 +30,11 @@ def setup_observability() -> None:
 
     try:
         from azure.monitor.opentelemetry import configure_azure_monitor
-        from agent_framework.observability import (
-            create_resource,
-            enable_instrumentation,
-        )
 
         configure_azure_monitor(
             connection_string=connection_string,
-            resource=create_resource(),
             enable_live_metrics=True,
         )
-
-        enable_instrumentation(enable_sensitive_data=False)
 
         logger.info("Azure Application Insights observability enabled")
     except ImportError as exc:

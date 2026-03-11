@@ -4,7 +4,7 @@
 
 This guide walks you through deploying the **Prior Authorization Review — Multi-Agent Solution Accelerator** to Azure. The default deployment takes approximately 10 minutes and provisions the frontend, backend/orchestrator, and Microsoft Foundry project resources.
 
-> **Hosted-agent note:** The current `azd up` flow does **not** automatically provision the four hosted specialist agent runtimes. It prepares the app for them by deploying the backend compatibility/orchestrator layer and Foundry resources. You can run in local/in-process mode immediately, then switch to hosted endpoints after those agents are deployed separately.
+> **Architecture note:** The project ships with four independent MAF Hosted Agent packages under `agents/` (clinical, coverage, compliance, synthesis). `docker compose up --build` starts all six services locally. For Azure, each agent is deployed as its own Foundry Hosted Agent container; the FastAPI orchestrator calls them over HTTP when `USE_HOSTED_AGENTS=true`.
 
 🆘 **Need Help?** If you encounter any issues during deployment, check our [Troubleshooting Guide](./troubleshooting.md) for solutions to common problems.
 
@@ -166,34 +166,46 @@ Review the configuration options below. You can customize any settings that meet
 
 > **Note:** This step is only required for **local development** or **Docker Compose** deployments. If you are deploying with `azd up`, skip this step — credentials are configured via `azd env set` in [Step 4.3](#43-deploy-claude-model--configure-credentials) after the Foundry resources are provisioned.
 
-Create a `backend/.env` file with your Microsoft Foundry credentials:
+The backend uses `backend/.env` and each MAF agent container reads env vars from its own `agent.yaml` (Foundry) or the root `.env` (Docker Compose).
+
+**`backend/.env`** (orchestrator only):
 
 ```env
-AZURE_FOUNDRY_API_KEY=your-azure-foundry-api-key
-AZURE_FOUNDRY_ENDPOINT=https://<resource-name>.services.ai.azure.com/anthropic
-CLAUDE_MODEL=claude-sonnet-4-6
-
-# Skills-based approach (default: true)
-USE_SKILLS=true
-
 # Runtime mode
-# false = local/in-process ClaudeAgent execution
-# true  = backend invokes hosted specialist agents over HTTP
-USE_HOSTED_AGENTS=false
+# true  = backend calls the 4 hosted agent containers over HTTP (Docker Compose default)
+# false = backend falls back to legacy ClaudeAgent in-process (not recommended)
+USE_HOSTED_AGENTS=true
 
-# Hosted agent endpoints (set when USE_HOSTED_AGENTS=true)
-HOSTED_AGENT_COMPLIANCE_URL=
-HOSTED_AGENT_CLINICAL_URL=
-HOSTED_AGENT_COVERAGE_URL=
-HOSTED_AGENT_SYNTHESIS_URL=
-HOSTED_AGENT_TIMEOUT_SECONDS=120
-HOSTED_AGENT_AUTH_HEADER=Authorization
-HOSTED_AGENT_AUTH_SCHEME=Bearer
-HOSTED_AGENT_AUTH_TOKEN=
+# Hosted agent endpoints
+# Docker Compose: point to the MAF agent services
+HOSTED_AGENT_CLINICAL_URL=http://agent-clinical:8000
+HOSTED_AGENT_COVERAGE_URL=http://agent-coverage:8000
+HOSTED_AGENT_COMPLIANCE_URL=http://agent-compliance:8000
+HOSTED_AGENT_SYNTHESIS_URL=http://agent-synthesis:8000
+HOSTED_AGENT_TIMEOUT_SECONDS=180
 
-# Azure Application Insights (optional)
+# Azure Application Insights (optional — shared by all containers)
 APPLICATION_INSIGHTS_CONNECTION_STRING=InstrumentationKey=...;IngestionEndpoint=...
 ```
+
+**Env vars required by each MAF agent container** (set via `agent.yaml` on Foundry, or add to root `.env` for Docker Compose):
+
+```env
+# Azure AI Foundry project endpoint (replaces AZURE_FOUNDRY_ENDPOINT for MAF agents)
+AZURE_AI_PROJECT_ENDPOINT=https://<resource-name>.services.ai.azure.com
+
+# Model deployment name
+AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4o
+
+# MCP server URLs (DeepSense + Anthropic, defaults pre-configured in agent.yaml)
+MCP_NPI_REGISTRY=https://mcp.deepsense.ai/npi_registry/mcp
+MCP_ICD10_CODES=https://mcp.deepsense.ai/icd10_codes/mcp
+MCP_CMS_COVERAGE=https://mcp.deepsense.ai/cms_coverage/mcp
+MCP_PUBMED=https://pubmed.mcp.claude.com/mcp
+MCP_CLINICAL_TRIALS=https://mcp.deepsense.ai/clinical_trials/mcp
+```
+
+> **Key change from previous version:** MAF agents use `AZURE_AI_PROJECT_ENDPOINT` (not `AZURE_FOUNDRY_ENDPOINT`) and authenticate via `DefaultAzureCredential` (managed identity) rather than an API key. For local Docker Compose, ensure your local Azure CLI session is active or set `AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET` if running without CLI auth.
 
 > **Where to find these values:**
 >
@@ -624,9 +636,9 @@ The level of trace detail visible in Foundry depends on upstream framework relea
 |------|------|-------------|
 | **HTTP-level traces** | Available now | Request/response to `/review` endpoint (duration, status code) |
 | **Agent-level traces** | Available now (rc3+) | `invoke_agent` spans with agent name, duration, response capture, exception tracking |
-| **Tool-level traces** | After [Claude SDK #611](https://github.com/anthropics/claude-agent-sdk-python/issues/611) is resolved | Individual MCP tool call spans (e.g., `npi_lookup`, `validate_code`) as child spans |
+| **Tool-level traces** | Available now with MAF native agents | Individual MCP tool call spans (e.g., `npi_lookup`, `validate_code`) as child spans via `gen_ai.*` semantic conventions |
 
-To pick up new trace capabilities, update `agent-framework-claude` version in `backend/requirements.txt` and redeploy with `azd up`. No other code changes are needed — the existing `enable_instrumentation()` call in the observability module automatically captures all emitted spans.
+MAF's `from_agent_framework` pattern emits W3C-compliant trace context and standard `gen_ai.*` OTel spans natively — this resolves the black-box tracing limitation of the previous Claude SDK subprocess approach. To pick up updated trace capabilities, update `agent-framework` and `azure-ai-agentserver` versions in each `agents/*/requirements.txt` and rebuild.
 
 📖 **Learn More:**
 - [Register a custom agent in Foundry Control Plane](https://learn.microsoft.com/en-us/azure/foundry/control-plane/register-custom-agent)
@@ -746,28 +758,40 @@ azd env get-values
 <details>
 <summary><b>Docker Compose (Local Quick Start)</b></summary>
 
+`docker compose up --build` starts **6 containers** — the FastAPI orchestrator,
+4 independent MAF agent containers, and the Next.js frontend.
+
 **Build and start containers:**
 
 ```bash
 docker compose up --build
 ```
 
-**Verify deployment:**
+**Verify all services are healthy:**
 
 | **Service** | **URL** | **Expected Response** |
 |-------------|---------|----------------------|
 | Frontend | http://localhost:3000 | Application UI loads |
-| Backend health | http://localhost:8000/health | `{"status": "healthy"}` |
+| Backend (orchestrator) | http://localhost:8000/health | `{"status": "healthy"}` |
+| Clinical Agent | http://localhost:8001/health | `{"status": "healthy"}` |
+| Coverage Agent | http://localhost:8002/health | `{"status": "healthy"}` |
+| Compliance Agent | http://localhost:8003/health | `{"status": "healthy"}` |
+| Synthesis Agent | http://localhost:8004/health | `{"status": "healthy"}` |
 
-**Container details:**
+**Container startup order:**
 
-The `docker-compose.yml` reads your `backend/.env` file and maps credentials:
+The four agent containers start first. The backend waits until all four pass
+their health checks before it starts accepting requests. The frontend waits
+for the backend. Total cold-start time is approximately 30–60 seconds.
 
-| **Your `.env` variable** | **Maps to (container)** | **Purpose** |
-|--------------------------|-------------------------|-------------|
-| `AZURE_FOUNDRY_API_KEY` | `ANTHROPIC_FOUNDRY_API_KEY` | Microsoft Foundry auth |
-| `AZURE_FOUNDRY_ENDPOINT` | `ANTHROPIC_FOUNDRY_BASE_URL` | Foundry endpoint URL |
-| (set automatically) | `CLAUDE_CODE_USE_FOUNDRY=true` | Enables Foundry mode |
+**Credentials required:**
+
+| **Container** | **Required env var** | **Source** |
+|---------------|----------------------|------------|
+| All 4 agents | `AZURE_AI_PROJECT_ENDPOINT` | Foundry Home tab |
+| All 4 agents | `AZURE_OPENAI_DEPLOYMENT_NAME` | Foundry Deployments |
+| Backend | `USE_HOSTED_AGENTS=true` | Set in `backend/.env` or `docker-compose.yml` |
+| Backend | `HOSTED_AGENT_*_URL` | Auto-set to agent container names in `docker-compose.yml` |
 
 > ⏱️ **Expected Duration:** ~2 minutes for initial build, ~30 seconds for subsequent starts.
 

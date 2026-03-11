@@ -1,0 +1,13 @@
+# Microsoft Agent Framework — core runtime
+agent-framework>=0.1.0
+# Foundry Hosted Agent server adapter (from_agent_framework)
+azure-ai-agentserver>=0.1.0
+# Azure OpenAI Responses API client
+azure-ai-projects>=1.0.0
+# Managed identity / DefaultAzureCredential
+azure-identity>=1.15.0
+# No MCP client needed — compliance uses no external tools
+# Environment variable loading
+python-dotenv>=1.0.0
+# Azure Monitor OpenTelemetry (optional — remove if not using App Insights)
+azure-monitor-opentelemetry>=1.6.0

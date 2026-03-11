@@ -2,16 +2,18 @@
 
 A **multi-agent** AI-assisted prior authorization (PA) review application built
 with **Azure Container Apps**, **Microsoft Foundry**, the **Microsoft Agent
-Framework**, **Claude Agent SDK**, and **Anthropic & DeepSense Healthcare MCP
-Servers**. Four specialized agents — Compliance, Clinical Reviewer, Coverage,
-and Synthesis — work in parallel and sequence, coordinated by a FastAPI
-orchestrator that applies a gate-based decision rubric and produces a final
-recommendation with confidence scoring and an audit justification document.
+Framework (MAF)**, and **Anthropic & DeepSense Healthcare MCP Servers**.
+Four specialized agents — Compliance, Clinical Reviewer, Coverage, and
+Synthesis — are each packaged as independent **Foundry Hosted Agents** using
+the native MAF `from_agent_framework` pattern. They work in parallel and
+sequence, coordinated by a FastAPI orchestrator that applies a gate-based
+decision rubric and produces a final recommendation with confidence scoring
+and an audit justification document.
 
-The solution now supports **two runtime modes**:
+The solution supports **two runtime modes**:
 
-- **Local / in-process mode** — the backend executes agents directly with `ClaudeAgent`
-- **Hosted-agent mode** — the backend preserves the same API/SSE contract while dispatching specialist stages to hosted Microsoft Foundry-compatible agent endpoints
+- **Local / Docker Compose mode** — all 4 agent containers + backend + frontend run locally via `docker compose up`
+- **Foundry Hosted Agent mode** — each agent is deployed as an independent Foundry Hosted Agent on Azure Container Apps; the backend calls them over HTTP
 
 Incorporates best practices from the
 [Anthropic prior-auth-review-skill](https://github.com/anthropics/healthcare/tree/main/prior-auth-review-skill):
@@ -48,14 +50,54 @@ confidence scoring, progressive gate evaluation, and structured audit trails.
 <a id="solution-overview"></a>
 ## <img src="./docs/images/readme/solution-overview.svg" width="48" /> Solution overview
 
-This solution leverages **Microsoft Foundry**, **Microsoft Agent Framework**,
-**Claude Agent SDK**, **Azure Application Insights**, and **Anthropic &
-DeepSense Healthcare MCP Servers** to create an intelligent prior authorization review pipeline where
-specialized AI agents work together to validate, assess, and synthesize PA
-decisions with full audit transparency. In the hosted-agent architecture, the
-frontend and FastAPI orchestrator remain in Azure Container Apps while the
-specialist reasoning stages move behind Microsoft Foundry hosted-agent
-endpoints.
+This solution leverages **Microsoft Foundry**, **Microsoft Agent Framework
+(MAF)**, **Azure Application Insights**, and **Anthropic & DeepSense
+Healthcare MCP Servers** to create an intelligent prior authorization review
+pipeline where four specialized AI agents work together to validate, assess,
+and synthesize PA decisions with full audit transparency and native
+OpenTelemetry tracing. Each specialist agent is independently containerized
+and deployed as a Foundry Hosted Agent, while the FastAPI orchestrator and
+Next.js frontend remain in Azure Container Apps.
+
+### Project structure
+
+```
+prior-auth-maf/
+├── backend/               # FastAPI orchestrator — SSE streaming, review dashboard, audit PDF
+│   ├── app/
+│   │   ├── agents/        # Legacy local agent wrappers (used when USE_HOSTED_AGENTS=false)
+│   │   ├── routers/       # /review, /decision endpoints
+│   │   ├── services/      # hosted_agents.py HTTP dispatch, audit PDF, CPT validation
+│   │   └── tools/         # mcp_config.py (local mode MCP server config)
+│   └── Dockerfile
+│
+├── agents/                # Four independent MAF Hosted Agent deployable units
+│   ├── clinical/          # ICD-10, PubMed, Clinical Trials MCP — port 8001
+│   │   ├── main.py        # from_agent_framework entry point
+│   │   ├── Dockerfile
+│   │   ├── agent.yaml     # Foundry Hosted Agent descriptor
+│   │   └── skills/clinical-review/SKILL.md
+│   ├── coverage/          # NPI Registry, CMS Coverage MCP — port 8002
+│   │   ├── main.py
+│   │   ├── Dockerfile
+│   │   ├── agent.yaml
+│   │   └── skills/coverage-assessment/SKILL.md
+│   ├── compliance/        # No MCP tools — pure reasoning — port 8003
+│   │   ├── main.py
+│   │   ├── Dockerfile
+│   │   ├── agent.yaml
+│   │   └── skills/compliance-review/SKILL.md
+│   └── synthesis/         # No MCP tools — gate-based synthesis — port 8004
+│       ├── main.py
+│       ├── Dockerfile
+│       ├── agent.yaml
+│       └── skills/synthesis-decision/SKILL.md
+│
+├── frontend/              # Next.js UI
+├── docs/                  # Architecture, deployment guide, API reference
+├── infra/                 # Bicep / azd infrastructure
+└── docker-compose.yml     # Local: backend + 4 agents + frontend
+```
 
 ### Solution architecture
 
@@ -66,8 +108,9 @@ endpoints.
 
 The orchestrator coordinates four phases with four specialized agents:
 
-|![Agentic Architecture](./docs/images/readme/agentic-architecture.svg)|
-|---|
+<p align="center">
+  <img src="./docs/images/readme/agentic-architecture.svg" alt="Agentic Architecture" />
+</p>
 
 <br/>
 
@@ -97,11 +140,13 @@ The orchestrator coordinates four phases with four specialized agents:
 </details>
 
 <details>
-  <summary><b>Hosted-agent ready architecture</b></summary>
+  <summary><b>Foundry Hosted Agent architecture</b></summary>
 
-  - `USE_HOSTED_AGENTS=true` switches the backend from local in-process execution to HTTP invocation of hosted specialist agents
-  - Frontend routes, SSE progress events, decision handling, and PDF generation remain in the ACA-hosted backend
-  - Local execution remains available as a fallback during migration and parity testing
+  - Each of the 4 specialist agents has its own `main.py`, `Dockerfile`, `agent.yaml`, and `skills/` directory under `agents/<name>/`
+  - Agents are built with the native MAF `from_agent_framework` pattern — no Claude CLI subprocess, full OpenTelemetry trace propagation
+  - `USE_HOSTED_AGENTS=true` switches the FastAPI orchestrator from any local fallback to HTTP dispatch across the 4 independent agent containers
+  - `USE_HOSTED_AGENTS=false` keeps a lightweight local fallback; the same SSE contract, decision handling, and PDF generation remain in the backend regardless of mode
+  - Each agent container is independently versioned, deployable, and scalable
 </details>
 
 <details>
@@ -116,8 +161,10 @@ The orchestrator coordinates four phases with four specialized agents:
   <summary><b>MCP-powered data access</b></summary>
 
   - Five remote MCP servers: NPI Registry, ICD-10 Codes, CMS Coverage, Clinical Trials (DeepSense), PubMed (Anthropic)
-  - No custom MCP client needed — Microsoft Agent Framework's Claude SDK handles it natively
-  - Model-agnostic: `MCPStreamableHTTPTool` enables MCP access from any LLM
+  - Connections owned entirely by each agent container via `MCPStreamableHTTPTool` — no Foundry Tool MCP registration required
+  - DeepSense CloudFront header requirement (`User-Agent: claude-code/1.0`) injected via `httpx.AsyncClient` passed to each tool
+  - Model-agnostic: `MCPStreamableHTTPTool` works with any LLM backed by `AzureOpenAIResponsesClient`
+  - MCP URLs configured via env vars in `agent.yaml` (or `.env` locally) — no code changes needed to point to different servers
 </details>
 
 <details>
