@@ -1,6 +1,8 @@
 # Microsoft Agent Framework — core runtime
 agent-framework>=0.1.0
-# Foundry Hosted Agent server adapter (from azure.ai.agentserver.agentframework import from_agent_framework)
+# Foundry Hosted Agent server adapter — core protocol layer + MAF adapter
+# See: https://learn.microsoft.com/azure/foundry/agents/concepts/hosted-agents#public-adapter-packages
+azure-ai-agentserver-core>=0.1.0
 azure-ai-agentserver-agentframework>=0.1.0
 # Azure AI Projects SDK — requires 2.0.0+ for hosted agent APIs
 azure-ai-projects>=2.0.0
