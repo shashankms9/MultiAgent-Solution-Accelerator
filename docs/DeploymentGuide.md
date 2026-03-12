@@ -164,7 +164,7 @@ Review the configuration options below. You can customize any settings that meet
 
 ### 3.1 Set Environment Variables
 
-> **Note:** This step is only required for **local development** or **Docker Compose** deployments. If you are deploying with `azd up`, skip this step — credentials are configured via `azd env set` in [Step 4.3](#43-deploy-claude-model--configure-credentials) after the Foundry resources are provisioned.
+> **Note:** This step is only required for **local development** or **Docker Compose** deployments. If you are deploying with `azd up`, skip this step — after `azd up` completes, see [Step 4.3](#43-deployment-complete--no-manual-steps-required).
 
 The backend uses `backend/.env` and each MAF agent container reads env vars from its own `agent.yaml` (Foundry) or the root `.env` (Docker Compose).
 
@@ -192,7 +192,7 @@ AZURE_AI_PROJECT_ENDPOINT=https://<resource-name>.services.ai.azure.com
 # Model deployment name
 AZURE_OPENAI_DEPLOYMENT_NAME=gpt-5.4
 
-# MCP server URLs (DeepSense + Anthropic, defaults pre-configured in agent.yaml)
+# MCP server URLs (DeepSense + Anthropic Healthcare MCP, defaults pre-configured in agent.yaml)
 MCP_NPI_REGISTRY=https://mcp.deepsense.ai/npi_registry/mcp
 MCP_ICD10_CODES=https://mcp.deepsense.ai/icd10_codes/mcp
 MCP_CMS_COVERAGE=https://mcp.deepsense.ai/cms_coverage/mcp
@@ -214,8 +214,7 @@ MCP_CLINICAL_TRIALS=https://mcp.deepsense.ai/clinical_trials/mcp
 > Deployment name     = "gpt-5.4"                                                                →  AZURE_OPENAI_DEPLOYMENT_NAME
 > ```
 
-If you are using hosted agents, keep the Claude credentials configured for any
-backend-owned model operations and add the hosted-agent URLs after those agent
+If you are using hosted agents, add the hosted-agent URLs after those agent
 deployments are available.
 
 ### 3.2 Advanced Configuration (Optional)
@@ -1004,13 +1003,12 @@ FRONTEND_ORIGIN                  →    FRONTEND_ORIGIN
 
 | **Issue** | **Cause** | **Solution** |
 |-----------|-----------|--------------|
-| `ANTHROPIC_FOUNDRY_API_KEY` not set | Missing `.env` file | Create `backend/.env` with your credentials (see Step 3.1) |
 | Backend health check fails | Port mismatch or dependency error | Check logs: `docker compose logs backend` |
 | MCP server timeouts | Network/firewall blocking MCP endpoints | Verify outbound HTTPS access to `mcp.deepsense.ai` and `pubmed.mcp.claude.com` |
 | Frontend shows CORS error | `FRONTEND_ORIGIN` mismatch | Set `FRONTEND_ORIGIN` to match the frontend's URL |
 | Container build fails | Docker not running | Start Docker Desktop and retry |
-| Azure quota exceeded | Insufficient Claude model quota | Check quota in Microsoft Foundry (see Step 1.3) |
-| Agent reviews take >5 min | Claude model capacity limits | Retry during off-peak hours or check Foundry service status |
+| Azure quota exceeded | Insufficient gpt-5.4 model quota | Check quota in Microsoft Foundry under **Build → Deployments** (see Step 1.3) |
+| Agent reviews take >5 min | gpt-5.4 model capacity limits | Retry during off-peak hours or check Foundry service status |
 
 > 📖 **Detailed Troubleshooting:** See [Troubleshooting Guide](./troubleshooting.md) for comprehensive solutions.
 

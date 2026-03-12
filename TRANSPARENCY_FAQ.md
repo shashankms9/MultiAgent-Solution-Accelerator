@@ -2,7 +2,7 @@
 
 - ### What is the Prior Authorization Review — Multi-Agent Solution Accelerator?
 
-    The Prior Authorization Review — Multi-Agent Solution Accelerator is an AI-assisted prior authorization (PA) review application built with the Microsoft Agent Framework, Claude Agent SDK, and Anthropic Healthcare MCP Servers. It uses three specialized AI agents — Compliance, Clinical Reviewer, and Coverage — coordinated by an orchestrator to evaluate prior authorization requests against coverage policies and produce a recommendation with confidence scoring and an audit justification document. The solution is designed to assist human reviewers by automating the intake triage, clinical data extraction, and policy criteria mapping steps of the PA review process.
+    The Prior Authorization Review — Multi-Agent Solution Accelerator is an AI-assisted prior authorization (PA) review application built with the **Microsoft Agent Framework**, **Azure OpenAI gpt-5.4 on Microsoft Foundry**, and **Anthropic & DeepSense Healthcare MCP Servers**. It uses four specialized AI agents — Compliance, Clinical Reviewer, Coverage, and Synthesis — coordinated by an orchestrator to evaluate prior authorization requests against coverage policies and produce a recommendation with confidence scoring and an audit justification document. The solution is designed to assist human reviewers by automating the intake triage, clinical data extraction, and policy criteria mapping steps of the PA review process.
 
 - ### What can the Prior Authorization Review — Multi-Agent Solution Accelerator do?
 
@@ -23,7 +23,7 @@
     The solution is designed to:
 
     - Serve as a customizable starting point for organizations building AI-assisted PA review systems
-    - Demonstrate the multi-agent pattern using Microsoft Agent Framework with Claude Agent SDK
+    - Demonstrate the multi-agent pattern using Microsoft Agent Framework with Azure OpenAI gpt-5.4 on Microsoft Foundry
     - Showcase integration with healthcare MCP servers (NPI Registry, ICD-10 Codes, CMS Coverage, PubMed, Clinical Trials)
     - Illustrate skills-based agent architecture where domain experts can update clinical rules without code changes
     - Provide a reference for gate-based decision synthesis with full audit transparency

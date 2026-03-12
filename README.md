@@ -2,7 +2,8 @@
 
 A **multi-agent** AI-assisted prior authorization (PA) review application built
 with **Azure Container Apps**, **Microsoft Foundry**, the **Microsoft Agent
-Framework (MAF)**, and **Anthropic & DeepSense Healthcare MCP Servers**.
+Framework (MAF)**, and **DeepSense & Anthropic Healthcare MCP Servers**.
+Agents are powered by **gpt-5.4 on Microsoft Foundry** via `AzureOpenAIResponsesClient`.
 Four specialized agents — Compliance, Clinical Reviewer, Coverage, and
 Synthesis — are each packaged as independent **Foundry Hosted Agents** using
 the native MAF `from_agent_framework` pattern. They work in parallel and
@@ -15,7 +16,7 @@ The solution supports **two runtime modes**:
 - **Local / Docker Compose mode** — all 4 agent containers + backend + frontend run locally via `docker compose up`
 - **Foundry Hosted Agent mode** — agents are registered with Microsoft Foundry Hosted Agents via `scripts/register_agents.py`; Foundry manages the container lifecycle. The backend dispatches through the Foundry project endpoint using `agent_reference` routing and `DefaultAzureCredential` — no per-agent ACA URLs required
 
-Incorporates best practices from the
+Decision policy and evaluation methodology adapted from the
 [Anthropic prior-auth-review-skill](https://github.com/anthropics/healthcare/tree/main/prior-auth-review-skill):
 LENIENT mode decision policy, per-criterion MET/NOT_MET/INSUFFICIENT evaluation,
 confidence scoring, progressive gate evaluation, structured audit trails, NCCI
@@ -53,8 +54,8 @@ specialty-procedure appropriateness as an auditable criterion.
 ## <img src="./docs/images/readme/solution-overview.svg" width="48" /> Solution overview
 
 This solution leverages **Microsoft Foundry**, **Microsoft Agent Framework
-(MAF)**, **Azure Application Insights**, and **Anthropic & DeepSense
-Healthcare MCP Servers** to create an intelligent prior authorization review
+(MAF)**, **Azure Application Insights**, and **DeepSense & Anthropic Healthcare
+MCP Servers** to create an intelligent prior authorization review
 pipeline where four specialized AI agents work together to validate, assess,
 and synthesize PA decisions with full audit transparency and native
 OpenTelemetry tracing. Each specialist agent is independently containerized
@@ -124,15 +125,11 @@ The orchestrator coordinates four phases with four specialized agents:
 
 ### Additional resources
 
-- [Anthropic Healthcare MCP Marketplace](https://github.com/anthropics/healthcare)
-- [Prior Auth Review Skill](https://github.com/anthropics/healthcare/tree/main/prior-auth-review-skill)
-- [Build AI Agents with Claude Agent SDK and Microsoft Agent Framework](https://devblogs.microsoft.com/semantic-kernel/build-ai-agents-with-claude-agent-sdk-and-microsoft-agent-framework/)
-- [Microsoft Agent Framework — Claude Agent](https://learn.microsoft.com/en-us/agent-framework/user-guide/agents/agent-types/anthropic-agent)
 - [Azure OpenAI GPT-5.4 in Microsoft Foundry](https://techcommunity.microsoft.com/blog/azure-ai-foundry-blog/introducing-gpt-5-4-in-microsoft-foundry/4499785)
-- [Claude Prior Auth Review Tutorial](https://claude.com/resources/tutorials/how-to-use-the-prior-auth-review-sample-skill-with-claude-2ggy8)
+- [Microsoft Agent Framework Documentation](https://learn.microsoft.com/en-us/agent-framework/)
+- [Anthropic Healthcare MCP Marketplace](https://github.com/anthropics/healthcare) (MCP data tools, not the AI model)
+- [Prior Auth Review Skill — methodology reference](https://github.com/anthropics/healthcare/tree/main/prior-auth-review-skill)
 - [Model Context Protocol (MCP)](https://modelcontextprotocol.io/)
-- [Claude Agent SDK](https://platform.claude.com/docs/en/agent-sdk/overview)
-- [Anthropic Agent Skills](https://platform.claude.com/docs/en/docs/agents-and-tools/agent-skills/overview)
 
 <br/>
 
@@ -173,10 +170,10 @@ The orchestrator coordinates four phases with four specialized agents:
 <details>
   <summary><b>MCP-powered data access</b></summary>
 
-  - Five remote MCP servers: NPI Registry, ICD-10 Codes, CMS Coverage, Clinical Trials (DeepSense), PubMed (Anthropic)
+  - Five remote MCP servers: NPI Registry, ICD-10 Codes, CMS Coverage, Clinical Trials (DeepSense), PubMed (Anthropic Healthcare MCP)
   - Connections owned entirely by each agent container via `MCPStreamableHTTPTool` — no Foundry Tool MCP registration required
-  - DeepSense CloudFront header requirement (`User-Agent: claude-code/1.0`) injected via `httpx.AsyncClient` passed to each tool
-  - Model-agnostic: `MCPStreamableHTTPTool` works with any LLM backed by `AzureOpenAIResponsesClient`
+  - DeepSense CloudFront requires `User-Agent: claude-code/1.0` header (a routing constraint of the MCP server, not a model config) — injected via shared `httpx.AsyncClient`
+  - All agents use `AzureOpenAIResponsesClient` with gpt-5.4 on Microsoft Foundry
   - MCP URLs configured via env vars in `agent.yaml` (or `.env` locally) — no code changes needed to point to different servers
 </details>
 
