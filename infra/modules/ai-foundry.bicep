@@ -83,14 +83,15 @@ resource appInsightsConnection 'Microsoft.CognitiveServices/accounts/projects/co
     }
   }
 }
-// ── gpt-5.4 Model Deployment (Standard Global) ───────────────────────────
-// Standard Global = no region quota allocation; capacity is drawn from
-// Microsoft's global pool. No region restriction is needed for this SKU.
+// ── gpt-5.4 Model Deployment (Data Zone Standard) ────────────────────────
+// DataZoneStandard = data residency is bounded to a geographic zone (e.g. US
+// or EU) while capacity is drawn from Microsoft's regional pool — no
+// per-region quota allocation or region restriction required.
 resource modelDeployment 'Microsoft.CognitiveServices/accounts/deployments@2025-06-01' = {
   name: deploymentName
   parent: foundryAccount
   sku: {
-    name: 'GlobalStandard'
+    name: 'DataZoneStandard'
     capacity: deploymentCapacityK
   }
   properties: {

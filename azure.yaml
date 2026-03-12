@@ -11,7 +11,7 @@ hooks:
       run: |
         # ── Region Validation ────────────────────────────────────────
         $region = azd env get-value AZURE_LOCATION 2>$null
-        # gpt-5.4 is a Standard Global deployment — no region restriction required
+        # gpt-5.4 is a DataZone Standard deployment — no region restriction required
         if ($region) {
           Write-Host ""
           Write-Host "===============================================================" -ForegroundColor Yellow
@@ -284,7 +284,7 @@ hooks:
       run: |
         # ── Region Validation ────────────────────────────────────────
         REGION=$(azd env get-value AZURE_LOCATION 2>/dev/null)
-        # gpt-5.4 is a Standard Global deployment — no region restriction required
+        # gpt-5.4 is a DataZone Standard deployment — no region restriction required
 
         # ── Pre-Deployment Verification ────────────────────────────
         if [ -n "$REGION" ]; then
@@ -618,7 +618,7 @@ hooks:
         Write-Host " Next Steps:" -ForegroundColor White
         Write-Host "  1. Open the Frontend URL below in your browser" -ForegroundColor White
         Write-Host "  2. Click 'Load Sample Case' and then 'Submit for Review'" -ForegroundColor White
-        Write-Host "  Note: gpt-5.4 was automatically deployed by azd (Standard Global)" -ForegroundColor Gray
+        Write-Host "  Note: gpt-5.4 was automatically deployed by azd (DataZone Standard)" -ForegroundColor Gray
         Write-Host ""
         $frontendUrl = azd env get-value frontendUrl
         $backendUrl  = azd env get-value backendUrl
@@ -720,7 +720,7 @@ hooks:
         printf "${White} Next Steps:${NC}\n"
         printf "  1. Open the Frontend URL below in your browser\n"
         printf "  2. Click 'Load Sample Case' and then 'Submit for Review'\n"
-        printf "  Note: gpt-5.4 was automatically deployed by azd (Standard Global)\n\n"
+        printf "  Note: gpt-5.4 was automatically deployed by azd (DataZone Standard)\n\n"
         FRONTEND_URL=$(azd env get-value frontendUrl)
         BACKEND_URL=$(azd env get-value backendUrl)
         printf "${Yellow} Application URLs:${NC}\n"

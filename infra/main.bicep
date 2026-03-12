@@ -15,7 +15,7 @@ targetScope = 'subscription'
 param environmentName string
 
 @minLength(1)
-@description('Primary location for all resources. gpt-5.4 is a Standard Global deployment and is available in all Azure regions.')
+@description('Primary location for all resources. gpt-5.4 uses DataZone Standard — no region restriction required.')
 param location string
 
 @description('Azure OpenAI deployment name to use across all agent containers (e.g., gpt-5.4)')
