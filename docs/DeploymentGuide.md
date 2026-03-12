@@ -27,7 +27,7 @@ Ensure you have access to an [Azure subscription](https://azure.microsoft.com/fr
 > |-------------------|--------|--------|---------|-------------|
 > | Cognitive Services OpenAI User | Backend Container App managed identity | Foundry account | `role-assignments.bicep` | Lets the FastAPI orchestrator call the Foundry Responses API |
 > | AcrPull | Foundry project managed identity | Container Registry | `role-assignments.bicep` | Lets Foundry pull the 4 agent images when provisioning Hosted Agents |
-> | Azure AI Developer | Deployer (you, running `azd up`) | Foundry account | postprovision hook (`az role assignment create`) | Lets `register_agents.py` register agents via the Foundry Agent Service API |
+> | Azure AI User | Deployer (you, running `azd up`) | Foundry account | postprovision hook (`az role assignment create`) | Lets `register_agents.py` register agents via the Foundry Agent Service API |
 
 **🔍 How to Check Your Permissions:**
 
@@ -317,7 +317,7 @@ azd up
 
 > **Note:** Container images are built remotely on Azure Container Registry, so no local Docker installation is required for deployment. This works on any machine architecture (x86, ARM64) and any OS.
 
-**Expected Duration:** ~10 minutes for initial provisioning + deployment. On the very first run, agent registration may take an extra 1–2 minutes while Azure RBAC propagates the newly assigned Azure AI Developer role (you'll see "Waiting for RBAC propagation" messages — this is normal). Subsequent runs skip this wait.
+**Expected Duration:** ~10 minutes for initial provisioning + deployment. On the very first run, agent registration may take an extra 1–2 minutes while Azure RBAC propagates the newly assigned Azure AI User role (you'll see "Waiting for RBAC propagation" messages — this is normal). Subsequent runs skip this wait.
 
 **⚠️ Deployment Issues:** If you encounter errors or timeouts, check the [Troubleshooting Guide](./troubleshooting.md) for detailed error solutions.
 

@@ -9,7 +9,7 @@
 //    Allows Foundry Agent Service to pull the 4 agent container images from
 //    ACR when provisioning Foundry Hosted Agent deployments.
 //
-// Note: The deployer's Azure AI Developer role (needed for agent registration)
+// Note: The deployer's Azure AI User role (needed for agent registration)
 // is assigned via `az role assignment create` in the postprovision hook instead
 // of Bicep, because `az role assignment create` is idempotent and avoids
 // RoleAssignmentExists conflicts when the role was previously granted manually.

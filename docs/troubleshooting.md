@@ -124,7 +124,7 @@ agent deployment.
 **Foundry Hosted Agents (production):** Credentials come from `DefaultAzureCredential`. Common causes:
 
 - The backend ACA managed identity is missing the `CognitiveServicesOpenAIUser` role on the Foundry account — check `infra/modules/role-assignments.bicep` and re-run `azd provision`
-- The deployer user is missing the `Azure AI Developer` role on the Foundry account (required by `scripts/register_agents.py` to register agents) — this role is auto-assigned by `az role assignment create` in the postprovision hook; re-run `azd up` to fix
+- The deployer user is missing the `Azure AI User` role on the Foundry account (required by `scripts/register_agents.py` to register agents) — this role is auto-assigned by `az role assignment create` in the postprovision hook; re-run `azd up` to fix
 - `AZURE_AI_PROJECT_ENDPOINT` is pointing to the wrong project or account
 - The agents were not successfully registered — check `scripts/register_agents.py` output in the postprovision hook logs
 
@@ -138,7 +138,7 @@ ERROR: (PermissionDenied) The principal ... lacks the required data action
 Microsoft.CognitiveServices/accounts/AIServices/agents/write
 ```
 
-**Cause:** Azure RBAC propagation delay. The postprovision hook assigns the Azure AI Developer role immediately before running `register_agents.py`, but Azure's role cache can take up to several minutes to update.
+**Cause:** Azure RBAC propagation delay. The postprovision hook assigns the Azure AI User role immediately before running `register_agents.py`, but Azure's role cache can take up to several minutes to update.
 
 **Automatic handling:** The hook automatically detects newly assigned roles and retries `register_agents.py` every 10 seconds (up to 12 attempts / ~2 minutes). You'll see "Waiting for RBAC propagation (attempt N/12)..." messages in the output — this is expected on first deployment.
 

@@ -2,7 +2,7 @@
 // Prior Auth MAF — Main Bicep template
 // Deploys: Resource Group, Microsoft Foundry (Resource + Project), Container Registry,
 //          Container Apps Environment, Backend + 4 Agent + Frontend Container Apps,
-//          Log Analytics, App Insights, Role Assignments (Cognitive Services OpenAI User, Azure AI Developer)
+//          Log Analytics, App Insights, Role Assignments (Cognitive Services OpenAI User, Azure AI User)
 // ---------------------------------------------------------------------------
 
 targetScope = 'subscription'
@@ -152,7 +152,7 @@ module backend './modules/container-app.bicep' = {
 // ── Role Assignments ─────────────────────────────────────────────────────────
 // Backend → CognitiveServicesOpenAIUser on Foundry (Responses API + agent_reference)
 // Foundry project identity → AcrPull on ACR (agent image pull for hosted agents)
-// Deployer → Azure AI Developer is assigned via `az role assignment create` in postprovision hook (idempotent)
+// Deployer → Azure AI User is assigned via `az role assignment create` in postprovision hook (idempotent)
 
 module roleAssignments './modules/role-assignments.bicep' = {
   name: 'role-assignments'

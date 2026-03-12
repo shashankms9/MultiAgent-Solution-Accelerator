@@ -303,11 +303,11 @@ The following RBAC roles are automatically assigned during `azd up`:
 |----------|---------------|-----------|------------------|-------------|
 | Cognitive Services OpenAI User | Backend Container App managed identity | Foundry account | `role-assignments.bicep` (provision) | Orchestrator calls Foundry Responses API with `agent_reference` routing |
 | AcrPull | Foundry project managed identity | Container Registry | `role-assignments.bicep` (provision) | Foundry Agent Service pulls agent container images from ACR |
-| Azure AI Developer | Deployer (user running `azd up`) | Foundry account | `az role assignment create` (postprovision hook) | `register_agents.py` registers agents via Foundry Agent Service API |
+| Azure AI User | Deployer (user running `azd up`) | Foundry account | `az role assignment create` (postprovision hook) | `register_agents.py` registers agents via Foundry Agent Service API |
 
-The first two roles are assigned by `infra/modules/role-assignments.bicep` during `azd provision`. The Azure AI Developer role is assigned via `az role assignment create` in the postprovision hook — this is intentionally outside Bicep because the CLI command is natively idempotent (no error if the role was previously granted manually).
+The first two roles are assigned by `infra/modules/role-assignments.bicep` during `azd provision`. The Azure AI User role is assigned via `az role assignment create` in the postprovision hook — this is intentionally outside Bicep because the CLI command is natively idempotent (no error if the role was previously granted manually).
 
-> **First-run note:** Azure RBAC propagation can take up to several minutes after a new role assignment. On the very first `azd up` (when the Azure AI Developer role is newly created), the postprovision hook automatically retries `register_agents.py` every 10 seconds (up to 12 attempts) until the permission propagates. On subsequent runs the role already exists and no retries are needed.
+> **First-run note:** Azure RBAC propagation can take up to several minutes after a new role assignment. On the very first `azd up` (when the Azure AI User role is newly created), the postprovision hook automatically retries `register_agents.py` every 10 seconds (up to 12 attempts) until the permission propagates. On subsequent runs the role already exists and no retries are needed.
 
 ---
 
