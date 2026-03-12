@@ -25,8 +25,8 @@ param appInsightsResourceId string
 @description('Name for the model deployment (used in API calls, e.g. gpt-5.4)')
 param deploymentName string = 'gpt-5.4'
 
-@description('Model version to deploy. Leave empty to use the current default version.')
-param modelVersion string = ''
+@description('Model version to deploy.')
+param modelVersion string = '2026-03-05'
 
 @description('Standard Global capacity in thousands of tokens per minute (default: 100 = 100K TPM)')
 param deploymentCapacityK int = 100
