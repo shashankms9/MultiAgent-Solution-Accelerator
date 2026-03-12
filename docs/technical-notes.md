@@ -297,15 +297,15 @@ Shared: `HOSTED_AGENT_TIMEOUT_SECONDS` (default `180`).
 
 Token acquisition uses `azure.identity.aio.DefaultAzureCredential` — no manual token configuration needed.
 
-The following RBAC roles are automatically assigned by `infra/modules/role-assignments.bicep` during `azd provision`:
+The following RBAC roles are automatically assigned during `azd up`:
 
-| **Role** | **Principal** | **Scope** | **Purpose** |
-|----------|---------------|-----------|-------------|
-| Cognitive Services OpenAI User | Backend Container App managed identity | Foundry account | Orchestrator calls Foundry Responses API with `agent_reference` routing |
-| AcrPull | Foundry project managed identity | Container Registry | Foundry Agent Service pulls agent container images from ACR |
-| Azure AI Developer | Deployer (user running `azd up`) | Foundry account | `register_agents.py` registers agents via Foundry Agent Service API |
+| **Role** | **Principal** | **Scope** | **How Assigned** | **Purpose** |
+|----------|---------------|-----------|------------------|-------------|
+| Cognitive Services OpenAI User | Backend Container App managed identity | Foundry account | `role-assignments.bicep` (provision) | Orchestrator calls Foundry Responses API with `agent_reference` routing |
+| AcrPull | Foundry project managed identity | Container Registry | `role-assignments.bicep` (provision) | Foundry Agent Service pulls agent container images from ACR |
+| Azure AI Developer | Deployer (user running `azd up`) | Foundry account | `az role assignment create` (postprovision hook) | `register_agents.py` registers agents via Foundry Agent Service API |
 
-All three roles are automatically assigned by `infra/modules/role-assignments.bicep` during `azd provision`. The Azure AI Developer assignment is conditional — it is granted only when `principalId` is supplied (auto-populated by `azd` from the logged-in user).
+The first two roles are assigned by `infra/modules/role-assignments.bicep` during `azd provision`. The Azure AI Developer role is assigned via `az role assignment create` in the postprovision hook — this is intentionally outside Bicep because the CLI command is natively idempotent (no error if the role was previously granted manually).
 
 ---
 

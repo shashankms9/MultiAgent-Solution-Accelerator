@@ -13,9 +13,6 @@
     },
     "imagesBuilt": {
       "value": "${IMAGES_BUILT}"
-    },
-    "principalId": {
-      "value": "${AZURE_PRINCIPAL_ID}"
     }
   }
 }

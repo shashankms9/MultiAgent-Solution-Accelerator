@@ -9,9 +9,10 @@
 //    Allows Foundry Agent Service to pull the 4 agent container images from
 //    ACR when provisioning Foundry Hosted Agent deployments.
 //
-// 3. Deployer user → Azure AI Developer on Foundry account
-//    Allows the postprovision hook (register_agents.py) to register agents
-//    via the Foundry Agent Service API.
+// Note: The deployer's Azure AI Developer role (needed for agent registration)
+// is assigned via `az role assignment create` in the postprovision hook instead
+// of Bicep, because `az role assignment create` is idempotent and avoids
+// RoleAssignmentExists conflicts when the role was previously granted manually.
 // ---------------------------------------------------------------------------
 
 @description('Name of the existing Foundry (CognitiveServices) account')
@@ -26,17 +27,11 @@ param containerRegistryName string
 @description('Principal ID of the Foundry project system-assigned managed identity')
 param foundryProjectPrincipalId string
 
-@description('Principal ID of the deployer user (for agent registration). Empty string skips the assignment.')
-param deployerPrincipalId string = ''
-
 // Cognitive Services OpenAI User — allows calling Azure OpenAI + Foundry APIs
 var cognitiveServicesOpenAIUserRoleId = '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd'
 
 // AcrPull — allows pulling container images from Azure Container Registry
 var acrPullRoleId = '7f951dda-4ed3-4680-a7ca-43fe172d538d'
-
-// Azure AI Developer — allows creating/managing agents via Foundry Agent Service API
-var azureAIDeveloperRoleId = '64702f94-c441-49e6-a78b-ef80e0188fee'
 
 resource foundryAccount 'Microsoft.CognitiveServices/accounts@2025-06-01' existing = {
   name: foundryAccountName
@@ -65,16 +60,5 @@ resource foundryProjectAcrPullRoleAssignment 'Microsoft.Authorization/roleAssign
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', acrPullRoleId)
     principalId: foundryProjectPrincipalId
     principalType: 'ServicePrincipal'
-  }
-}
-
-// 3. Deployer user → Azure AI Developer on Foundry account (agent registration)
-resource deployerAIDeveloperRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(deployerPrincipalId)) {
-  name: guid(foundryAccount.id, deployerPrincipalId, azureAIDeveloperRoleId)
-  scope: foundryAccount
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', azureAIDeveloperRoleId)
-    principalId: deployerPrincipalId
-    principalType: 'User'
   }
 }

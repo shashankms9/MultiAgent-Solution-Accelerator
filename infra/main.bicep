@@ -28,9 +28,6 @@ param azureOpenAIDeploymentName string = 'gpt-5.4'
 @description('Whether container images have been built to ACR (set automatically by postprovision hook)')
 param imagesBuilt string = ''
 
-@description('Principal ID of the deployer user (auto-populated by azd)')
-param principalId string = ''
-
 // ── MCP Server URL parameters (all have production defaults) ────────────────
 
 @description('ICD-10 diagnosis code validation MCP server URL')
@@ -155,7 +152,7 @@ module backend './modules/container-app.bicep' = {
 // ── Role Assignments ─────────────────────────────────────────────────────────
 // Backend → CognitiveServicesOpenAIUser on Foundry (Responses API + agent_reference)
 // Foundry project identity → AcrPull on ACR (agent image pull for hosted agents)
-// Deployer → Azure AI Developer on Foundry (agent registration via register_agents.py)
+// Deployer → Azure AI Developer is assigned via `az role assignment create` in postprovision hook (idempotent)
 
 module roleAssignments './modules/role-assignments.bicep' = {
   name: 'role-assignments'
@@ -165,7 +162,6 @@ module roleAssignments './modules/role-assignments.bicep' = {
     backendPrincipalId: backend.outputs.principalId
     containerRegistryName: containerRegistry.outputs.name
     foundryProjectPrincipalId: aiFoundry.outputs.projectPrincipalId
-    deployerPrincipalId: principalId
   }
 }
 // ── Frontend Container App ──────────────────────────────────────────────────
