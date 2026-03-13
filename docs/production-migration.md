@@ -165,100 +165,254 @@ AZURE_STORAGE_ACCOUNT_URL=https://<account>.blob.core.windows.net
 
 ## Azure API Management — MCP Gateway
 
+### Why APIM for MCP?
+
 Currently each agent container calls its 3rd-party MCP servers directly over
 the public internet. In production this creates several operational risks:
-API keys scattered across Container App env vars, no central rate limiting,
-no fallback if a 3rd-party endpoint goes down, and no audit trail of MCP
-traffic.
 
-APIM solves all of this by sitting between the agent containers and every
-external MCP endpoint. **No agent code changes** — only the `MCP_*` env
-vars in the Container Apps are updated to point at APIM proxy URLs instead
-of the 3rd-party URLs directly.
+- **Scattered secrets** — API keys and workaround headers (e.g. `User-Agent: claude-code/1.0`) are duplicated across every agent's Python code and environment variables.
+- **No central rate limiting** — a misbehaving or hallucinating agent can flood a 3rd-party endpoint with unlimited requests.
+- **No fallback** — if a 3rd-party MCP server goes down, every agent fails independently with no circuit-breaker protection.
+- **No audit trail** — MCP tool calls are invisible at the infrastructure level; you only see them in application logs.
+- **Custom HTTP client overhead** — each agent creates a custom `httpx.AsyncClient` solely to inject the `User-Agent` header required by DeepSense CloudFront routing (see `_MCP_HTTP_CLIENT` in any agent `main.py`).
+
+Azure API Management's **native MCP Gateway** feature
+([docs](https://learn.microsoft.com/en-us/azure/api-management/expose-existing-mcp-server))
+solves all of these by acting as a protocol-aware proxy between the MAF
+Hosted Agents and every external MCP endpoint. Because APIM natively speaks
+the MCP protocol (Streamable HTTP and SSE transport), it handles the
+transport lifecycle without custom buffering policies.
+
+### Supported APIM Tiers
+
+The MCP Gateway feature is **not** available on the Consumption tier.
+Supported tiers (per [official documentation](https://learn.microsoft.com/en-us/azure/api-management/expose-existing-mcp-server)):
+
+| Tier | MCP Gateway | Provisioning Time | Recommended For |
+|---|---|---|---|
+| Developer | ✅ | 30-60 min | Local dev/test (no SLA) |
+| Basic v2 | ✅ | ~5-10 min | Cost-sensitive production |
+| **Standard v2** | ✅ | ~5-10 min | **Recommended** — VNet support, balanced cost |
+| Premium v2 | ✅ | ~5-10 min | Multi-region, high scale |
+| Consumption | ❌ | — | Not supported |
+
+### Deployment Strategy: Pre-Provision APIM
+
+> **Important:** Standard v2 provisioning takes ~5-10 minutes. If your
+> `azd up` pipeline must complete in under 10 minutes, **pre-provision
+> the APIM instance separately** so subsequent deployments reference
+> the existing resource and add only seconds to the pipeline.
+
+**Step 1 — One-time APIM provisioning (run once, outside of `azd up`):**
+
+```bash
+# Create the APIM instance separately (takes ~5-10 min for Standard v2)
+az apim create \
+  --name <apim-name> \
+  --resource-group <rg-name> \
+  --location <region> \
+  --sku-name StandardV2 \
+  --publisher-name "Contoso Health" \
+  --publisher-email admin@contoso.com
+```
+
+**Step 2 — Reference in Bicep as `existing`:**
+
+```bicep
+// infra/modules/apim.bicep — references the pre-provisioned instance
+resource apim 'Microsoft.ApiManagement/service@2024-06-01-preview' existing = {
+  name: apimName
+  scope: resourceGroup()
+}
+```
+
+This way `azd up` only creates the MCP server entries and policies on the
+already-running APIM instance — no provisioning wait time.
 
 ### Architecture
 
 ```
-agent-clinical  ──┐
-agent-coverage  ──┤──► APIM (https://<apim>.azure-api.net/mcp/)
-agent-compliance──┤         │
-agent-synthesis ──┘         │── /icd10      → mcp.deepsense.ai/icd10_codes/mcp
-                            │── /pubmed     → pubmed.mcp.claude.com/mcp
-                            │── /trials     → mcp.deepsense.ai/clinical_trials/mcp
-                            │── /npi        → mcp.deepsense.ai/npi_registry/mcp
-                            └── /cms        → mcp.deepsense.ai/cms_coverage/mcp
+MAF Hosted Agents (Azure AI Foundry)
+  ├── agent-clinical  ──┐
+  ├── agent-coverage  ──┤
+  ├── agent-compliance──┤──► APIM MCP Gateway (https://<apim>.azure-api.net/)
+  └── agent-synthesis ──┘         │
+                                  │── /icd10-mcp/mcp      → mcp.deepsense.ai/icd10_codes/mcp
+                                  │── /pubmed-mcp/mcp     → pubmed.mcp.claude.com/mcp
+                                  │── /trials-mcp/mcp     → mcp.deepsense.ai/clinical_trials/mcp
+                                  │── /npi-mcp/mcp        → mcp.deepsense.ai/npi_registry/mcp
+                                  └── /cms-mcp/mcp        → mcp.deepsense.ai/cms_coverage/mcp
 ```
 
-### What APIM Adds
+### What APIM MCP Gateway Adds
 
 | Capability | How |
 |---|---|
-| API key storage | Named Values backed by Key Vault — never in Container App env vars |
-| Rate limiting | `<rate-limit-by-key>` policy per MCP backend |
-| Circuit breaker | `<retry>` + mock policy fallback if 3rd-party goes down |
-| Upstream swap | Change the APIM backend URL without redeploying agents |
-| Centralised monitoring | All MCP call volume, latency and failures in one App Insights |
-| Network isolation | Agents call a private APIM endpoint; no direct internet egress needed |
+| **Native MCP protocol** | APIM speaks MCP natively — no custom streaming/buffering policies needed |
+| **Centralized header injection** | `User-Agent: claude-code/1.0` and other headers managed via `<set-header>` policy — removed from Python code |
+| **API key storage** | Named Values backed by Key Vault — never in Container App env vars |
+| **Rate limiting** | `<rate-limit-by-key>` policy per MCP backend, keyed by `Mcp-Session-Id` |
+| **Circuit breaker** | `<retry>` + mock policy fallback if 3rd-party goes down |
+| **Upstream swap** | Change the APIM backend URL without redeploying agents |
+| **Centralised monitoring** | All MCP call volume, latency and failures in one App Insights dashboard |
+| **Network isolation** | Agents call a private APIM endpoint; no direct internet egress needed |
 
-### MCP Streamable HTTP Caveat
+### Step-by-Step Setup
 
-APIM buffers responses by default. MCP Streamable HTTP uses streaming POST
-responses, so each API must have the following policy to pass the stream
-through:
+#### 1. Register MCP Backends in APIM
+
+For each external MCP server, create an MCP Server entry in APIM. This can
+be done via the Azure Portal or Bicep:
+
+**Portal:**
+1. Navigate to your APIM instance → **APIs** → **MCP Servers** → **+ Create MCP server**
+2. Select **Expose an existing MCP server**
+3. Enter the backend MCP server base URL (e.g. `https://mcp.deepsense.ai/icd10_codes/mcp`)
+4. Set Transport type to **Streamable HTTP**
+5. Enter a Name (e.g. `icd10-codes`) and Base path (e.g. `icd10-mcp`)
+6. Click **Create**
+
+Repeat for each MCP backend (PubMed, ClinicalTrials, NPI Registry, CMS Coverage).
+
+**Bicep (automated via `azd up`):**
+
+```bicep
+// infra/modules/apim-mcp.bicep
+
+// MCP Server for ICD-10 codes
+resource icd10McpServer 'Microsoft.ApiManagement/service/apis@2024-06-01-preview' = {
+  parent: apim
+  name: 'icd10-mcp'
+  properties: {
+    displayName: 'ICD-10 Codes MCP'
+    path: 'icd10-mcp'
+    protocols: ['https']
+    type: 'mcp'
+    serviceUrl: 'https://mcp.deepsense.ai/icd10_codes/mcp'
+  }
+}
+
+// Repeat for pubmed, clinical-trials, npi-registry, cms-coverage
+```
+
+#### 2. Configure Policies (Header Injection)
+
+The external DeepSense MCP servers require a specific `User-Agent` header
+to avoid CloudFront 301 redirects. Apply an inbound policy to inject this
+header centrally:
+
+```xml
+<policies>
+    <inbound>
+        <base />
+        <!-- DeepSense CloudFront requires this User-Agent to route MCP traffic -->
+        <set-header name="User-Agent" exists-action="override">
+            <value>claude-code/1.0</value>
+        </set-header>
+    </inbound>
+    <backend>
+        <base />
+    </backend>
+    <outbound>
+        <base />
+    </outbound>
+    <on-error>
+        <base />
+    </on-error>
+</policies>
+```
+
+Apply this policy to each MCP server that routes to DeepSense endpoints.
+
+#### 3. Configure Rate Limiting (Optional but Recommended)
+
+Add per-session rate limiting to prevent runaway agent loops:
 
 ```xml
 <inbound>
-  <set-backend-service base-url="https://mcp.deepsense.ai/icd10_codes" />
-  <!-- inject 3rd-party API key from Named Value if required -->
-  <!-- <set-header name="X-API-Key" exists-action="override">
-    <value>{{mcp-deepsense-api-key}}</value>
-  </set-header> -->
+    <base />
+    <set-variable name="body" value="@(context.Request.Body.As<string>(preserveContent: true))" />
+    <choose>
+        <when condition="@(
+            Newtonsoft.Json.Linq.JObject.Parse((string)context.Variables[&quot;body&quot;])[&quot;method&quot;] != null
+            && Newtonsoft.Json.Linq.JObject.Parse((string)context.Variables[&quot;body&quot;])[&quot;method&quot;].ToString() == &quot;tools/call&quot;
+        )">
+            <rate-limit-by-key
+                calls="10"
+                renewal-period="60"
+                counter-key="@(context.Request.Headers.GetValueOrDefault(&quot;Mcp-Session-Id&quot;, &quot;unknown&quot;))" />
+        </when>
+    </choose>
 </inbound>
-<backend>
-  <forward-request buffer-request-body="false" />
-</backend>
-<outbound>
-  <!-- do not buffer the streamed response -->
-</outbound>
 ```
 
-`buffer-request-body="false"` is the critical line — without it APIM will
-buffer the full streaming response before forwarding it to the agent, which
-breaks MCP session establishment.
+#### 4. Update Agent Environment Variables
 
-### Bicep Changes
-
-Add `infra/modules/apim.bicep` with:
-
-1. `Microsoft.ApiManagement/service` resource (Developer or Standard tier)
-2. One `Microsoft.ApiManagement/service/backends` entry per MCP server
-3. One `Microsoft.ApiManagement/service/apis` entry per MCP server with the
-   streaming policy above
-4. Named Values for any 3rd-party API keys (reference Key Vault secrets)
-
-In `infra/main.bicep`, add the APIM module and update each agent Container
-App's `MCP_*` env vars:
+In `infra/main.bicep`, update each agent Container App's `MCP_*` env vars
+to point at the APIM MCP Gateway URLs:
 
 ```bicep
-// Before (direct):
-{ name: 'MCP_ICD10_CODES', value: mcpIcd10CodesUrl }
+// Before (direct internet call):
+{ name: 'MCP_ICD10_CODES', value: 'https://mcp.deepsense.ai/icd10_codes/mcp' }
 
-// After (via APIM):
-{ name: 'MCP_ICD10_CODES', value: '${apim.outputs.gatewayUrl}/mcp/icd10' }
+// After (via APIM MCP Gateway):
+{ name: 'MCP_ICD10_CODES', value: '${apim.outputs.gatewayUrl}/icd10-mcp/mcp' }
 ```
 
-### Agent Container App Env Var Changes
+#### 5. Simplify Agent Python Code
 
-| Variable | Current value | APIM value |
+Once APIM handles the `User-Agent` header injection, remove the custom
+`httpx.AsyncClient` from each agent's `main.py`:
+
+```python
+# BEFORE (current — custom HTTP client in every agent):
+_MCP_HTTP_CLIENT = httpx.AsyncClient(
+    headers={"User-Agent": "claude-code/1.0"},
+    timeout=httpx.Timeout(60.0),
+)
+icd10_tool = MCPStreamableHTTPTool(
+    name="icd10-codes",
+    url=os.environ["MCP_ICD10_CODES"],
+    http_client=_MCP_HTTP_CLIENT,
+    load_prompts=False,
+)
+
+# AFTER (with APIM — no custom client needed):
+icd10_tool = MCPStreamableHTTPTool(
+    name="icd10-codes",
+    url=os.environ["MCP_ICD10_CODES"],  # now points to APIM
+    load_prompts=False,
+)
+```
+
+### Agent Environment Variable Mapping
+
+| Variable | Current value (direct) | APIM MCP Gateway value |
 |---|---|---|
-| `MCP_ICD10_CODES` | `https://mcp.deepsense.ai/icd10_codes/mcp` | `https://<apim>.azure-api.net/mcp/icd10` |
-| `MCP_PUBMED` | `https://pubmed.mcp.claude.com/mcp` | `https://<apim>.azure-api.net/mcp/pubmed` |
-| `MCP_CLINICAL_TRIALS` | `https://mcp.deepsense.ai/clinical_trials/mcp` | `https://<apim>.azure-api.net/mcp/trials` |
-| `MCP_NPI_REGISTRY` | `https://mcp.deepsense.ai/npi_registry/mcp` | `https://<apim>.azure-api.net/mcp/npi` |
-| `MCP_CMS_COVERAGE` | `https://mcp.deepsense.ai/cms_coverage/mcp` | `https://<apim>.azure-api.net/mcp/cms` |
+| `MCP_ICD10_CODES` | `https://mcp.deepsense.ai/icd10_codes/mcp` | `https://<apim>.azure-api.net/icd10-mcp/mcp` |
+| `MCP_PUBMED` | `https://pubmed.mcp.claude.com/mcp` | `https://<apim>.azure-api.net/pubmed-mcp/mcp` |
+| `MCP_CLINICAL_TRIALS` | `https://mcp.deepsense.ai/clinical_trials/mcp` | `https://<apim>.azure-api.net/trials-mcp/mcp` |
+| `MCP_NPI_REGISTRY` | `https://mcp.deepsense.ai/npi_registry/mcp` | `https://<apim>.azure-api.net/npi-mcp/mcp` |
+| `MCP_CMS_COVERAGE` | `https://mcp.deepsense.ai/cms_coverage/mcp` | `https://<apim>.azure-api.net/cms-mcp/mcp` |
 
 The agent code (`MCPStreamableHTTPTool` instantiation in each `main.py`)
 does not change at all — it reads the URL from the environment variable.
+
+### Diagnostic Logging Caveat
+
+> **Important:** If you enable Application Insights diagnostic logging at
+> the global scope (All APIs) for your APIM instance, set the **Number of
+> payload bytes to log** for **Frontend Response** to `0`. This prevents
+> response body logging from interfering with MCP streaming transport.
+> Configure payload logging selectively at the individual MCP server scope
+> if needed.
+
+### Limitations (as of March 2026)
+
+- The external MCP server must conform to MCP version `2025-06-18` or later.
+- APIM MCP Gateway supports MCP **tools** and **resources**, but does **not** support MCP **prompts** (which is fine — we set `load_prompts=False` in all agents).
+- APIM does not display tools from the existing MCP server in the portal; tools are registered and managed on the remote server.
+- MCP server capabilities are not supported in APIM [Workspaces](https://learn.microsoft.com/en-us/azure/api-management/workspaces-overview).
 
 ---
 
