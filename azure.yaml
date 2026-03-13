@@ -631,7 +631,18 @@ hooks:
         $existing = az role assignment list --assignee $deployerOid --role "Azure AI User" --scope $scope --query "[].id" -o tsv 2>$null
         az role assignment create --assignee $deployerOid --role "Azure AI User" --scope $scope --only-show-errors 2>$null | Out-Null
         $roleIsNew = -not $existing
-        Write-Host "  Azure AI User role ensured" -ForegroundColor Green
+        Write-Host "  Azure AI User role ensured (deployer)" -ForegroundColor Green
+
+        # Also assign Azure AI User to the Backend ACA managed identity so it can
+        # call Foundry Hosted Agents at runtime via DefaultAzureCredential.
+        Write-Host "  Ensuring backend managed identity has Azure AI User role..." -ForegroundColor White
+        $backendMiOid = az containerapp identity show --name $backendApp --resource-group $rgName --query "principalId" -o tsv 2>$null
+        if ($backendMiOid) {
+            az role assignment create --assignee-object-id $backendMiOid --assignee-principal-type ServicePrincipal --role "Azure AI User" --scope $scope --only-show-errors 2>$null | Out-Null
+            Write-Host "  Backend managed identity role ensured" -ForegroundColor Green
+        } else {
+            Write-Host "  WARN: Could not retrieve backend managed identity" -ForegroundColor Yellow
+        }
 
         Write-Host ""
         Write-Host "  Registering agents with Foundry Hosted Agents service..." -ForegroundColor White
@@ -769,7 +780,18 @@ hooks:
         az role assignment create --assignee "$DEPLOYER_OID" --role "Azure AI User" --scope "$SCOPE" --only-show-errors > /dev/null 2>/dev/null || true
         ROLE_IS_NEW=false
         [ -z "$EXISTING" ] && ROLE_IS_NEW=true
-        printf "${Green}  Azure AI User role ensured${NC}\n"
+        printf "${Green}  Azure AI User role ensured (deployer)${NC}\n"
+
+        # Also assign Azure AI User to the Backend ACA managed identity so it can
+        # call Foundry Hosted Agents at runtime via DefaultAzureCredential.
+        printf "${White}  Ensuring backend managed identity has Azure AI User role...${NC}\n"
+        BACKEND_MI_OID=$(az containerapp identity show --name "$BACKEND_APP" --resource-group "$RG_NAME" --query "principalId" -o tsv 2>/dev/null)
+        if [ -n "$BACKEND_MI_OID" ]; then
+            az role assignment create --assignee-object-id "$BACKEND_MI_OID" --assignee-principal-type ServicePrincipal --role "Azure AI User" --scope "$SCOPE" --only-show-errors > /dev/null 2>/dev/null || true
+            printf "${Green}  Backend managed identity role ensured${NC}\n"
+        else
+            printf "${Yellow}  WARN: Could not retrieve backend managed identity${NC}\n"
+        fi
 
         printf "\n${White}  Registering agents with Foundry Hosted Agents service...${NC}\n"
         # Ensure azure-ai-projects is available for agent registration

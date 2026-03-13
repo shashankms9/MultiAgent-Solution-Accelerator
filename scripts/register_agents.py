@@ -69,6 +69,7 @@ def run() -> None:
         endpoint=project_endpoint,
         credential=DefaultAzureCredential(),
         allow_preview=True,
+        headers={"Foundry-Features": "HostedAgents=V1Preview"},
     )
 
     # MCP defaults (can be overridden via env vars in agent.yaml or here)

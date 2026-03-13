@@ -19,5 +19,5 @@ class SynthesisOutput(BaseModel):
     missing_documentation: list[str] = []
     policy_references: list[str] = []
     criteria_summary: str = ""
-    synthesis_audit_trail: dict = {}  # gate_results + confidence_components from evaluation
+    synthesis_audit_trail: str = ""  # JSON-encoded audit trail (dict not supported in structured output)
     disclaimer: str = ""

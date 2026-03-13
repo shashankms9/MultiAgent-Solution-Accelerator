@@ -47,7 +47,7 @@ async def _get_foundry_token() -> str:
     if _foundry_credential is None:
         _foundry_credential = _AsyncCredential()
     token = await _foundry_credential.get_token(
-        "https://cognitiveservices.azure.com/.default"
+        "https://ai.azure.com/.default"
     )
     return token.token
 
@@ -86,7 +86,22 @@ def _extract_result(data: Any) -> dict:
 
     status = data.get("status", "")
     if status not in ("completed", ""):  # empty string = local test adapter
-        return {"error": f"Agent returned status={status!r}", "tool_results": []}
+        # Extract error details from Foundry response (OpenAI Responses API
+        # includes an "error" object when status is "failed")
+        error_obj = data.get("error", {})
+        if isinstance(error_obj, dict) and error_obj.get("message"):
+            error_detail = f"Agent returned status={status!r}: {error_obj['message']}"
+        else:
+            error_detail = f"Agent returned status={status!r}"
+        logger.warning(
+            "Agent response status=%r (not 'completed'). "
+            "Error: %s. Response keys: %s. Full response (truncated): %s",
+            status,
+            error_obj,
+            list(data.keys()) if isinstance(data, dict) else "N/A",
+            str(data)[:2000],
+        )
+        return {"error": error_detail, "tool_results": []}
 
     output = data.get("output", [])
     for item in output if isinstance(output, list) else []:
@@ -116,7 +131,7 @@ async def _invoke_direct_http(agent_name: str, url: str, payload: dict) -> dict:
     Input must be a flat array of message objects, not wrapped in a {messages: []} dict.
     """
     request_body = {
-        "input": [{"role": "user", "content": json.dumps(payload)}]
+        "input": [{"type": "message", "role": "user", "content": json.dumps(payload)}]
     }
     responses_url = url.rstrip("/") + "/responses"
 
@@ -165,7 +180,7 @@ async def _invoke_foundry_agent(
 
     # Standard Foundry Responses API format with agent_reference routing
     request_body = {
-        "input": [{"role": "user", "content": json.dumps(payload)}],
+        "input": [{"type": "message", "role": "user", "content": json.dumps(payload)}],
         "agent_reference": {"name": foundry_agent_name, "type": "agent_reference"},
     }
 
@@ -188,12 +203,25 @@ async def _invoke_foundry_agent(
             response = await client.post(responses_url, json=request_body, headers=headers)
             response.raise_for_status()
             data = response.json()
-            result = _extract_result(data)
             logger.info(
-                "Foundry Hosted Agent %s (%s) invocation succeeded",
+                "Foundry Hosted Agent %s (%s) raw response status=%s, keys=%s",
                 agent_name,
                 foundry_agent_name,
+                data.get("status") if isinstance(data, dict) else "N/A",
+                list(data.keys()) if isinstance(data, dict) else "N/A",
             )
+            result = _extract_result(data)
+            if result.get("error"):
+                logger.warning(
+                    "Foundry Hosted Agent %s (%s) extraction error: %s",
+                    agent_name, foundry_agent_name, result["error"],
+                )
+            else:
+                logger.info(
+                    "Foundry Hosted Agent %s (%s) invocation succeeded",
+                    agent_name,
+                    foundry_agent_name,
+                )
             return result
     except httpx.HTTPStatusError as exc:
         detail = exc.response.text[:500] if exc.response is not None else str(exc)

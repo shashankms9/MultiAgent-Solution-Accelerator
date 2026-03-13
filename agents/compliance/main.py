@@ -11,7 +11,7 @@ which from_agent_framework passes through to every agent.run() call.
 import os
 from pathlib import Path
 
-from agent_framework import FileAgentSkillsProvider
+from agent_framework import SkillsProvider
 from agent_framework.azure import AzureOpenAIResponsesClient
 from azure.ai.agentserver.agentframework import from_agent_framework
 from azure.identity import DefaultAzureCredential
@@ -40,7 +40,7 @@ def main() -> None:
     # --- No MCP tools — compliance check is pure reasoning ---
 
     # --- Skills from local directory ---
-    skills_provider = FileAgentSkillsProvider(
+    skills_provider = SkillsProvider(
         skill_paths=str(Path(__file__).parent / "skills")
     )
 
@@ -65,9 +65,8 @@ def main() -> None:
     )
 
     # --- Serve as HTTP endpoint for Foundry hosting ---
-    # Explicit port=8000: from_agent_framework defaults to 8088 but our
-    # Dockerfiles EXPOSE 8000 and docker-compose healthchecks use port 8000.
-    from_agent_framework(agent).run(port=8000)
+    # Default port is 8088 (the Foundry Hosted Agent convention via DEFAULT_AD_PORT).
+    from_agent_framework(agent).run()
 
 
 if __name__ == "__main__":

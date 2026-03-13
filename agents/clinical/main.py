@@ -13,7 +13,7 @@ import os
 from pathlib import Path
 
 import httpx
-from agent_framework import FileAgentSkillsProvider, MCPStreamableHTTPTool
+from agent_framework import MCPStreamableHTTPTool, SkillsProvider
 from agent_framework.azure import AzureOpenAIResponsesClient
 from azure.ai.agentserver.agentframework import from_agent_framework
 from azure.identity import DefaultAzureCredential
@@ -25,7 +25,10 @@ load_dotenv(override=True)  # override=True required for Foundry-deployed env va
 
 # DeepSense CloudFront routes on User-Agent — without this header the server
 # returns a 301 redirect to the docs site instead of handling MCP messages.
-_MCP_HTTP_CLIENT = httpx.AsyncClient(headers={"User-Agent": "claude-code/1.0"})
+_MCP_HTTP_CLIENT = httpx.AsyncClient(
+    headers={"User-Agent": "claude-code/1.0"},
+    timeout=httpx.Timeout(60.0),
+)
 
 
 def main() -> None:
@@ -67,7 +70,7 @@ def main() -> None:
     )
 
     # --- Skills from local directory ---
-    skills_provider = FileAgentSkillsProvider(
+    skills_provider = SkillsProvider(
         skill_paths=str(Path(__file__).parent / "skills")
     )
 
@@ -92,9 +95,8 @@ def main() -> None:
     )
 
     # --- Serve as HTTP endpoint for Foundry hosting ---
-    # Explicit port=8000: from_agent_framework defaults to 8088 but our
-    # Dockerfiles EXPOSE 8000 and docker-compose healthchecks use port 8000.
-    from_agent_framework(agent).run(port=8000)
+    # Default port is 8088 (the Foundry Hosted Agent convention via DEFAULT_AD_PORT).
+    from_agent_framework(agent).run()
 
 
 if __name__ == "__main__":

@@ -11,10 +11,10 @@ services:
     environment:
       # All 4 agent containers run separately.
       # Backend calls them over HTTP — URLs are set to Docker service names.
-      - HOSTED_AGENT_CLINICAL_URL=http://agent-clinical:8000
-      - HOSTED_AGENT_COVERAGE_URL=http://agent-coverage:8000
-      - HOSTED_AGENT_COMPLIANCE_URL=http://agent-compliance:8000
-      - HOSTED_AGENT_SYNTHESIS_URL=http://agent-synthesis:8000
+      - HOSTED_AGENT_CLINICAL_URL=http://agent-clinical:8088
+      - HOSTED_AGENT_COVERAGE_URL=http://agent-coverage:8088
+      - HOSTED_AGENT_COMPLIANCE_URL=http://agent-compliance:8088
+      - HOSTED_AGENT_SYNTHESIS_URL=http://agent-synthesis:8088
       # App settings
       - FRONTEND_ORIGIN=http://localhost:3000
     env_file:
@@ -43,7 +43,7 @@ services:
       context: ./agents/clinical
       dockerfile: Dockerfile
     ports:
-      - "8001:8000"
+      - "8001:8088"
     environment:
       - AZURE_AI_PROJECT_ENDPOINT=${AZURE_AI_PROJECT_ENDPOINT}
       - AZURE_OPENAI_DEPLOYMENT_NAME=${AZURE_OPENAI_DEPLOYMENT_NAME:-gpt-4o}
@@ -52,7 +52,7 @@ services:
       - MCP_CLINICAL_TRIALS=${MCP_CLINICAL_TRIALS:-https://mcp.deepsense.ai/clinical_trials/mcp}
       - APPLICATION_INSIGHTS_CONNECTION_STRING=${APPLICATION_INSIGHTS_CONNECTION_STRING:-}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8088/liveness"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -66,7 +66,7 @@ services:
       context: ./agents/coverage
       dockerfile: Dockerfile
     ports:
-      - "8002:8000"
+      - "8002:8088"
     environment:
       - AZURE_AI_PROJECT_ENDPOINT=${AZURE_AI_PROJECT_ENDPOINT}
       - AZURE_OPENAI_DEPLOYMENT_NAME=${AZURE_OPENAI_DEPLOYMENT_NAME:-gpt-4o}
@@ -74,7 +74,7 @@ services:
       - MCP_CMS_COVERAGE=${MCP_CMS_COVERAGE:-https://mcp.deepsense.ai/cms_coverage/mcp}
       - APPLICATION_INSIGHTS_CONNECTION_STRING=${APPLICATION_INSIGHTS_CONNECTION_STRING:-}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8088/liveness"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -88,13 +88,13 @@ services:
       context: ./agents/compliance
       dockerfile: Dockerfile
     ports:
-      - "8003:8000"
+      - "8003:8088"
     environment:
       - AZURE_AI_PROJECT_ENDPOINT=${AZURE_AI_PROJECT_ENDPOINT}
       - AZURE_OPENAI_DEPLOYMENT_NAME=${AZURE_OPENAI_DEPLOYMENT_NAME:-gpt-4o-mini}
       - APPLICATION_INSIGHTS_CONNECTION_STRING=${APPLICATION_INSIGHTS_CONNECTION_STRING:-}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8088/liveness"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -108,13 +108,13 @@ services:
       context: ./agents/synthesis
       dockerfile: Dockerfile
     ports:
-      - "8004:8000"
+      - "8004:8088"
     environment:
       - AZURE_AI_PROJECT_ENDPOINT=${AZURE_AI_PROJECT_ENDPOINT}
       - AZURE_OPENAI_DEPLOYMENT_NAME=${AZURE_OPENAI_DEPLOYMENT_NAME:-gpt-4o}
       - APPLICATION_INSIGHTS_CONNECTION_STRING=${APPLICATION_INSIGHTS_CONNECTION_STRING:-}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8088/liveness"]
       interval: 30s
       timeout: 5s
       retries: 3

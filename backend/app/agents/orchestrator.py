@@ -782,6 +782,16 @@ async def _run_review_pipeline(
                 for item in val
             ]
 
+    # synthesis_audit_trail comes as a JSON-encoded string from the agent
+    # (Responses API structured output doesn't support unconstrained dict).
+    # Parse it back to dict for the backend/frontend API contract.
+    _sat = synthesis.get("synthesis_audit_trail")
+    if isinstance(_sat, str) and _sat:
+        try:
+            synthesis["synthesis_audit_trail"] = json.loads(_sat)
+        except (json.JSONDecodeError, TypeError):
+            synthesis["synthesis_audit_trail"] = {}
+
     await _emit({
         "phase": "phase_3", "status": "completed", "progress_pct": 90,
         "message": "Synthesis complete",
