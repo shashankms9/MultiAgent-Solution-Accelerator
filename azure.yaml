@@ -306,7 +306,7 @@ hooks:
           Write-Host "   - Agent: Synthesis Decision (MAF Hosted Agent)" -ForegroundColor White
           Write-Host "   - Frontend Container App (Next.js/nginx)" -ForegroundColor White
           Write-Host "   - Log Analytics + Application Insights" -ForegroundColor White
-          Write-Host "   - Role Assignments (Cognitive Services OpenAI User, AcrPull + Azure AI User via hook)" -ForegroundColor White
+          Write-Host "   - Role Assignments (Cognitive Services OpenAI User + OpenAI Contributor, AcrPull, Azure AI User)" -ForegroundColor White
           Write-Host ""
           Write-Host "===============================================================" -ForegroundColor Yellow
 
@@ -588,7 +588,7 @@ hooks:
           printf "   • Agent: Synthesis Decision (MAF Hosted Agent)\n"
           printf "   • Frontend Container App (Next.js/nginx)\n"
           printf "   • Log Analytics + Application Insights\n"
-          printf "   • Role Assignments (Cognitive Services OpenAI User, AcrPull + Azure AI User via hook)\n"
+          printf "   • Role Assignments (Cognitive Services OpenAI User + OpenAI Contributor, AcrPull, Azure AI User)\n"
           printf "\n${Yellow}===============================================================${NC}\n"
 
           # Ask for confirmation
