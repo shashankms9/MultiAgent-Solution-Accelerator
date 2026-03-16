@@ -14,6 +14,7 @@ Foundry Hosted Agents mode (Azure deployment via azd up):
   Foundry Agent Service routes the request to the named hosted agent deployment.
 """
 
+import asyncio
 import json
 import logging
 from typing import Any
@@ -181,7 +182,10 @@ async def _invoke_foundry_agent(
         }
 
     try:
-        response = openai_client.responses.create(
+        # responses.create() is synchronous — run in a thread to avoid blocking
+        # the FastAPI async event loop
+        response = await asyncio.to_thread(
+            openai_client.responses.create,
             input=[{"role": "user", "content": json.dumps(payload)}],
             extra_body={
                 "agent_reference": {
