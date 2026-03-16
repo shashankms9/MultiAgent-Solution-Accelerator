@@ -30,6 +30,12 @@ param foundryProjectPrincipalId string
 // Cognitive Services OpenAI User — allows calling Azure OpenAI + Foundry APIs
 var cognitiveServicesOpenAIUserRoleId = '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd'
 
+// Cognitive Services OpenAI Contributor — allows hosted agents to call models
+var cognitiveServicesOpenAIContributorRoleId = 'a001fd3d-188f-4b5d-821b-7da978bf7442'
+
+// Azure AI User — allows hosted agents to use Foundry Agent Service data actions
+var azureAIUserRoleId = 'fd1a4f48-1b7a-44e4-9b5d-2a4bb756f30c'
+
 // AcrPull — allows pulling container images from Azure Container Registry
 var acrPullRoleId = '7f951dda-4ed3-4680-a7ca-43fe172d538d'
 
@@ -58,6 +64,30 @@ resource foundryProjectAcrPullRoleAssignment 'Microsoft.Authorization/roleAssign
   scope: containerRegistry
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', acrPullRoleId)
+    principalId: foundryProjectPrincipalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// 3. Foundry project identity → Cognitive Services OpenAI Contributor on Foundry account
+//    Allows hosted agent containers to call gpt-5.4 via the Responses API
+resource foundryProjectOpenAIContributorRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(foundryAccount.id, foundryProjectPrincipalId, cognitiveServicesOpenAIContributorRoleId)
+  scope: foundryAccount
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', cognitiveServicesOpenAIContributorRoleId)
+    principalId: foundryProjectPrincipalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// 4. Foundry project identity → Azure AI User on Foundry account
+//    Allows hosted agent containers to use Foundry Agent Service data actions
+resource foundryProjectAIUserRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(foundryAccount.id, foundryProjectPrincipalId, azureAIUserRoleId)
+  scope: foundryAccount
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', azureAIUserRoleId)
     principalId: foundryProjectPrincipalId
     principalType: 'ServicePrincipal'
   }

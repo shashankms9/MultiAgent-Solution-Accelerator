@@ -186,7 +186,6 @@ async def _invoke_foundry_agent(
             extra_body={
                 "agent_reference": {
                     "name": foundry_agent_name,
-                    "version": settings.HOSTED_AGENT_VERSION,
                     "type": "agent_reference",
                 }
             },

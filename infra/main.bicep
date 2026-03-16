@@ -146,7 +146,6 @@ module backend './modules/container-app.bicep' = {
       { name: 'HOSTED_AGENT_COVERAGE_NAME', value: 'coverage-assessment-agent' }
       { name: 'HOSTED_AGENT_COMPLIANCE_NAME', value: 'compliance-agent' }
       { name: 'HOSTED_AGENT_SYNTHESIS_NAME', value: 'synthesis-agent' }
-      { name: 'HOSTED_AGENT_VERSION', value: 'latest' }
       { name: 'HOSTED_AGENT_TIMEOUT_SECONDS', value: '180' }
       { name: 'APPLICATION_INSIGHTS_CONNECTION_STRING', value: monitoring.outputs.appInsightsConnectionString }
       { name: 'FRONTEND_ORIGIN', value: 'https://${abbrs.appContainerApps}frontend-${resourceToken}.${containerAppsEnv.outputs.defaultDomain}' }
