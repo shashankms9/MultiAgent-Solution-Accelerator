@@ -99,6 +99,9 @@ def _build_review_response(request_id: str, result: dict) -> ReviewResponse:
         missing_documentation=result.get("missing_documentation", []),
         documentation_gaps=doc_gaps,
         policy_references=result.get("policy_references", []),
+        decision_gate=result.get("decision_gate", ""),
+        criteria_summary=result.get("criteria_summary", ""),
+        synthesis_audit_trail=result.get("synthesis_audit_trail", {}),
         disclaimer=result.get(
             "disclaimer",
             "AI-assisted draft. Coverage policies reflect Medicare LCDs/NCDs only. "
