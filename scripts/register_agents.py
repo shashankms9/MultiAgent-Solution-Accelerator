@@ -49,6 +49,32 @@ def run() -> None:
         )
         sys.exit(1)
 
+    # Validate that all agent images exist in ACR before registering
+    acr_name = acr_endpoint.replace(".azurecr.io", "")
+    agent_images = ["agent-clinical", "agent-coverage", "agent-compliance", "agent-synthesis"]
+    missing_images = []
+    for img in agent_images:
+        result = subprocess.run(
+            ["az", "acr", "repository", "show-tags", "--name", acr_name,
+             "--repository", img, "--query", f"[?@=='{image_tag}']", "-o", "tsv"],
+            capture_output=True, text=True,
+        )
+        if not result.stdout.strip():
+            missing_images.append(f"{img}:{image_tag}")
+    if missing_images:
+        print(
+            f"ERROR: The following images are missing from ACR ({acr_name}):\n"
+            + "\n".join(f"  - {img}" for img in missing_images)
+            + "\n\nBuild them first with:\n"
+            + "\n".join(
+                f"  az acr build --registry {acr_name} --image {img.split(':')[0]}:{image_tag} "
+                f"--platform linux/amd64 ./agents/{img.split(':')[0].replace('agent-', '')}"
+                for img in missing_images
+            ),
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     try:
         from azure.ai.projects import AIProjectClient
         from azure.ai.projects.models import (
