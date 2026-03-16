@@ -328,7 +328,7 @@ hooks:
     posix:
       run: |
         # ── Region Validation ────────────────────────────────────────
-        REGION=$(azd env get-value AZURE_LOCATION 2>/dev/null)
+        REGION=$(azd env get-value AZURE_LOCATION 2>/dev/null || true)
         if [ -n "$REGION" ] && [ "$REGION" != "eastus2" ] && [ "$REGION" != "swedencentral" ]; then
           Red='\033[0;31m'
           Yellow='\033[1;33m'
@@ -348,7 +348,7 @@ hooks:
         fi
 
         # ── Deployment SKU Selection ─────────────────────────────────
-        SKU=$(azd env get-value AZURE_OPENAI_DEPLOYMENT_SKU 2>/dev/null)
+        SKU=$(azd env get-value AZURE_OPENAI_DEPLOYMENT_SKU 2>/dev/null || true)
         if [ -z "$SKU" ]; then
           Green='\033[0;32m'
           Yellow='\033[1;33m'
@@ -467,7 +467,7 @@ hooks:
 
           # ── 5. Soft-Deleted Key Vault Check ──────────────────────
           printf "\n${White} [5/7] Checking for soft-deleted Key Vaults...${NC}\n"
-          ENV_NAME=$(azd env get-value AZURE_ENV_NAME 2>/dev/null)
+          ENV_NAME=$(azd env get-value AZURE_ENV_NAME 2>/dev/null || true)
           DELETED_VAULTS=$(az keyvault list-deleted --query "[?contains(name, '$ENV_NAME')].name" -o tsv 2>/dev/null || true)
           if [ -n "$DELETED_VAULTS" ]; then
             printf "${Yellow}   [!!] WARNING: Soft-deleted Key Vault found matching '%s'${NC}\n" "$ENV_NAME"
