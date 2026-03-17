@@ -34,7 +34,7 @@ var cognitiveServicesOpenAIUserRoleId = '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd'
 var cognitiveServicesOpenAIContributorRoleId = 'a001fd3d-188f-4b5d-821b-7da978bf7442'
 
 // Azure AI User — allows hosted agents to use Foundry Agent Service data actions
-var azureAIUserRoleId = 'fd1a4f48-1b7a-44e4-9b5d-2a4bb756f30c'
+var azureAIUserRoleId = '53ca6127-db72-4b80-b1b0-d745d6d5456d'
 
 // AcrPull — allows pulling container images from Azure Container Registry
 var acrPullRoleId = '7f951dda-4ed3-4680-a7ca-43fe172d538d'
