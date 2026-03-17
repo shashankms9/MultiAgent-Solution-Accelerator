@@ -5,15 +5,15 @@ maps clinical findings to policy criteria with MET/NOT_MET/INSUFFICIENT
 assessment, and returns a structured coverage evaluation.
 
 Deployed as a Foundry Hosted Agent via azure.ai.agentserver.
-MCP connections are owned by this container (no Foundry Tool registration needed).
+MCP tools (NPI Registry, CMS Coverage) are managed by Foundry Agent Service
+as project-level tool connections — no self-hosted MCP wiring needed in this code.
 Structured output enforced via default_options={"response_format": CoverageResult},
 which from_agent_framework passes through to every agent.run() call.
 """
 import os
 from pathlib import Path
 
-import httpx
-from agent_framework import MCPStreamableHTTPTool, SkillsProvider
+from agent_framework import SkillsProvider
 from agent_framework.azure import AzureOpenAIResponsesClient
 from azure.ai.agentserver.agentframework import from_agent_framework
 from azure.identity import DefaultAzureCredential
@@ -22,13 +22,6 @@ from dotenv import load_dotenv
 from schemas import CoverageResult
 
 load_dotenv(override=True)  # override=True required for Foundry-deployed env vars
-
-# DeepSense CloudFront routes on User-Agent — without this header the server
-# returns a 301 redirect to the docs site instead of handling MCP messages.
-_MCP_HTTP_CLIENT = httpx.AsyncClient(
-    headers={"User-Agent": "claude-code/1.0"},
-    timeout=httpx.Timeout(60.0),
-)
 
 
 def main() -> None:
@@ -46,21 +39,11 @@ def main() -> None:
         except Exception:  # best-effort — never crash the agent
             pass
 
-    # --- MCP tool connections (self-hosted, no Foundry Tool registration) ---
-    npi_tool = MCPStreamableHTTPTool(
-        name="npi-registry",
-        description="Validate and look up provider NPI numbers from CMS NPPES",
-        url=os.environ["MCP_NPI_REGISTRY"],
-        http_client=_MCP_HTTP_CLIENT,
-        load_prompts=False,
-    )
-    cms_tool = MCPStreamableHTTPTool(
-        name="cms-coverage",
-        description="Search Medicare NCDs, LCDs and coverage policy documents",
-        url=os.environ["MCP_CMS_COVERAGE"],
-        http_client=_MCP_HTTP_CLIENT,
-        load_prompts=False,
-    )
+    # --- MCP tools are managed by Foundry Agent Service ---
+    # NPI Registry and CMS Coverage MCP servers are registered as Foundry
+    # project tool connections (see scripts/register_agents.py). The Foundry
+    # Agent Service proxies MCP calls through its managed infrastructure.
+    # No MCPStreamableHTTPTool definitions needed here.
 
     # --- Skills from local directory ---
     skills_provider = SkillsProvider(
@@ -82,7 +65,7 @@ def main() -> None:
             "coverage policies, and map clinical evidence to policy criteria with "
             "MET/NOT_MET/INSUFFICIENT assessment and per-criterion confidence scoring."
         ),
-        tools=[npi_tool, cms_tool],
+        tools=[],  # MCP tools injected by Foundry Agent Service at runtime
         context_providers=[skills_provider],
         default_options={"response_format": CoverageResult},
     )

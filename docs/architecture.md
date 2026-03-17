@@ -147,9 +147,9 @@ Each agent container wires its MCP servers directly in `main.py` via
 
 ### The User-Agent Requirement
 
-The DeepSense-hosted MCP servers use CloudFront routing that requires `User-Agent: claude-code/1.0`.
+The DeepSense-hosted MCP servers use CloudFront routing that requires `User-Agent: claude-code/1.0`. This header is configured in the Foundry project tool connection (Key-based auth) created by `scripts/register_agents.py`. PubMed (`pubmed.mcp.claude.com`) works without authentication.
 
-### How Headers Are Injected
+### How MCP Tools Are Managed
 
 MCP tools are created per-agent in each container's `main.py`:
 

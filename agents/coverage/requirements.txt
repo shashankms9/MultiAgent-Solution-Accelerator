@@ -7,8 +7,6 @@ azure-ai-agentserver-agentframework>=1.0.0b16
 # azure-ai-projects is pulled transitively by agent-framework-core
 # Managed identity / DefaultAzureCredential
 azure-identity>=1.15.0
-# Custom MCP HTTP client (header injection for DeepSense CloudFront)
-httpx>=0.27.0
 # Environment variable loading
 python-dotenv>=1.0.0
 # Azure Monitor OpenTelemetry (optional — remove if not using App Insights)

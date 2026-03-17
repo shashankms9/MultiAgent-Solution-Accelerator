@@ -2,8 +2,12 @@
 """Register and start the 4 prior-auth agents as Foundry Hosted Agents.
 
 This script is called by the azure.yaml postprovision hook after agent images
-have been built and pushed to ACR. It registers each agent with Foundry Agent
-Service (creating a new version for each deploy) and then starts the deployments.
+have been built and pushed to ACR. It:
+
+1. Creates Foundry MCP tool connections (idempotent) for all 5 MCP servers
+   so hosted agents can call external tools via Foundry's managed proxy.
+2. Registers each agent with Foundry Agent Service (creating a new version).
+3. Starts the agent deployments.
 
 Requirements:
   pip install "azure-ai-projects>=2.0.0"
@@ -14,17 +18,127 @@ Required environment variables (set automatically by the postprovision hook):
   AI_FOUNDRY_ACCOUNT_NAME            — Foundry account name
   AI_FOUNDRY_PROJECT_NAME            — Foundry project name
   AZURE_OPENAI_DEPLOYMENT_NAME       — Model deployment name (default: gpt-5.4)
+  AZURE_SUBSCRIPTION_ID              — Azure subscription ID
+  AZURE_RESOURCE_GROUP               — Resource group name
 
 Optional environment variables:
   APPLICATION_INSIGHTS_CONNECTION_STRING — For agent observability (passed to agents)
-  MCP_ICD10_CODES, MCP_PUBMED, MCP_CLINICAL_TRIALS  — Override MCP URLs for clinical agent
-  MCP_NPI_REGISTRY, MCP_CMS_COVERAGE                — Override MCP URLs for coverage agent
-  IMAGE_TAG                                          — ACR image tag (default: latest)
+  IMAGE_TAG                             — ACR image tag (default: latest)
 """
 
 import os
 import subprocess
 import sys
+
+
+# ---------------------------------------------------------------------------
+# MCP tool connection definitions
+# ---------------------------------------------------------------------------
+# Each entry defines a Foundry project connection for a remote MCP server.
+# These connections are created via the ARM REST API and appear in the Foundry
+# portal under Build > Tools as configured MCP tools.
+#
+# DeepSense servers require a custom User-Agent header (without it they return
+# a 301 redirect). PubMed (Anthropic) works without authentication.
+# ---------------------------------------------------------------------------
+MCP_CONNECTIONS = [
+    {
+        "name": "icd10",
+        "url": "https://mcp.deepsense.ai/icd10_codes/mcp",
+        "auth": "CustomKeys",
+        "keys": {"User-Agent": "claude-code/1.0"},
+    },
+    {
+        "name": "pubmed",
+        "url": "https://pubmed.mcp.claude.com/mcp",
+        "auth": "None",
+        "keys": {},
+    },
+    {
+        "name": "clinical-trials",
+        "url": "https://mcp.deepsense.ai/clinical_trials/mcp",
+        "auth": "CustomKeys",
+        "keys": {"User-Agent": "claude-code/1.0"},
+    },
+    {
+        "name": "npi-registry",
+        "url": "https://mcp.deepsense.ai/npi_registry/mcp",
+        "auth": "CustomKeys",
+        "keys": {"User-Agent": "claude-code/1.0"},
+    },
+    {
+        "name": "cms-coverage",
+        "url": "https://mcp.deepsense.ai/cms_coverage/mcp",
+        "auth": "CustomKeys",
+        "keys": {"User-Agent": "claude-code/1.0"},
+    },
+]
+
+
+def _create_mcp_connections(
+    subscription_id: str,
+    resource_group: str,
+    account_name: str,
+    project_name: str,
+) -> None:
+    """Create Foundry MCP tool connections via the ARM REST API.
+
+    Each connection registers a remote MCP server in the Foundry project so
+    hosted agents can call MCP tools through Foundry's managed proxy instead
+    of making direct outbound HTTP calls from the container. This solves
+    IP-based rate-limiting issues with external MCP servers (e.g.
+    pubmed.mcp.claude.com blocks requests from Foundry container egress IPs).
+
+    Uses PUT (idempotent) -- safe to call on every deploy without conflicts.
+    Connections appear in the Foundry portal under Build > Tools.
+    """
+    import httpx
+    from azure.identity import DefaultAzureCredential
+
+    credential = DefaultAzureCredential()
+    token = credential.get_token("https://management.azure.com/.default").token
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+    }
+
+    api_version = "2025-04-01-preview"
+    base_url = (
+        f"https://management.azure.com/subscriptions/{subscription_id}"
+        f"/resourceGroups/{resource_group}"
+        f"/providers/Microsoft.CognitiveServices"
+        f"/accounts/{account_name}/projects/{project_name}"
+    )
+
+    print("  Creating Foundry MCP tool connections...")
+    for mcp in MCP_CONNECTIONS:
+        url = f"{base_url}/connections/{mcp['name']}?api-version={api_version}"
+
+        # Build the connection body matching the Foundry portal format:
+        # category=RemoteTool + metadata.type=custom_MCP makes it visible
+        # in the portal's Tools page as a configured MCP tool.
+        body: dict = {
+            "properties": {
+                "category": "RemoteTool",
+                "target": mcp["url"],
+                "authType": mcp["auth"],
+                "metadata": {"type": "custom_MCP"},
+            }
+        }
+
+        # Add credentials only for Key-based auth (DeepSense servers need
+        # the User-Agent header; PubMed works unauthenticated)
+        if mcp["auth"] == "CustomKeys" and mcp["keys"]:
+            body["properties"]["credentials"] = {"keys": mcp["keys"]}
+
+        try:
+            resp = httpx.put(url, json=body, headers=headers, timeout=15)
+            if resp.status_code in (200, 201):
+                print(f"    [OK] {mcp['name']}")
+            else:
+                print(f"    [!!] {mcp['name']}: HTTP {resp.status_code}")
+        except Exception as exc:
+            print(f"    [!!] {mcp['name']}: {exc}")
 
 
 def run() -> None:
@@ -35,6 +149,8 @@ def run() -> None:
     model_name = os.environ.get("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-5.4")
     app_insights_cs = os.environ.get("APPLICATION_INSIGHTS_CONNECTION_STRING", "")
     image_tag = os.environ.get("IMAGE_TAG", "latest")
+    subscription_id = os.environ.get("AZURE_SUBSCRIPTION_ID", "")
+    resource_group = os.environ.get("AZURE_RESOURCE_GROUP", "")
 
     if not project_endpoint:
         print("ERROR: AZURE_AI_PROJECT_ENDPOINT is not set.", file=sys.stderr)
@@ -80,8 +196,10 @@ def run() -> None:
         from azure.ai.projects.models import (
             AgentProtocol,
             HostedAgentDefinition,
+            MCPTool,
             ProtocolVersionRecord,
         )
+        from azure.core.pipeline.policies import CustomHookPolicy
         from azure.identity import DefaultAzureCredential
     except ImportError:
         print(
@@ -91,20 +209,47 @@ def run() -> None:
         )
         sys.exit(1)
 
+    # --- Step 1: Create Foundry MCP tool connections (idempotent) ---
+    if subscription_id and resource_group:
+        _create_mcp_connections(subscription_id, resource_group, account_name, project_name)
+    else:
+        print(
+            "  WARN: AZURE_SUBSCRIPTION_ID or AZURE_RESOURCE_GROUP not set -- "
+            "skipping MCP connection creation"
+        )
+
+    # --- Step 2: Register agents ---
+    # The HostedAgents=V1Preview feature flag is required to attach MCPTool
+    # definitions to HostedAgentDefinition (tools on hosted agents is preview).
+    class _FoundryPreviewPolicy(CustomHookPolicy):
+        """Injects the Foundry preview feature header into every request."""
+        def on_request(self, request):
+            request.http_request.headers["Foundry-Features"] = "HostedAgents=V1Preview"
+
     client = AIProjectClient(
         endpoint=project_endpoint,
         credential=DefaultAzureCredential(),
         allow_preview=True,
+        per_call_policies=[_FoundryPreviewPolicy()],
     )
 
-    # MCP defaults (can be overridden via env vars in agent.yaml or here)
-    mcp_icd10 = os.environ.get("MCP_ICD10_CODES", "https://mcp.deepsense.ai/icd10_codes/mcp")
-    mcp_pubmed = os.environ.get("MCP_PUBMED", "https://pubmed.mcp.claude.com/mcp")
-    mcp_trials = os.environ.get(
-        "MCP_CLINICAL_TRIALS", "https://mcp.deepsense.ai/clinical_trials/mcp"
-    )
-    mcp_npi = os.environ.get("MCP_NPI_REGISTRY", "https://mcp.deepsense.ai/npi_registry/mcp")
-    mcp_cms = os.environ.get("MCP_CMS_COVERAGE", "https://mcp.deepsense.ai/cms_coverage/mcp")
+    # Foundry MCPTool definitions -- reference the connections created in Step 1.
+    # These tell Foundry Agent Service to proxy MCP tool calls through Foundry's
+    # managed infrastructure instead of the hosted container's outbound network.
+    clinical_tools = [
+        MCPTool(server_label="icd10", server_url="https://mcp.deepsense.ai/icd10_codes/mcp",
+                require_approval="never", project_connection_id="icd10"),
+        MCPTool(server_label="pubmed", server_url="https://pubmed.mcp.claude.com/mcp",
+                require_approval="never", project_connection_id="pubmed"),
+        MCPTool(server_label="clinical-trials", server_url="https://mcp.deepsense.ai/clinical_trials/mcp",
+                require_approval="never", project_connection_id="clinical-trials"),
+    ]
+    coverage_tools = [
+        MCPTool(server_label="npi-registry", server_url="https://mcp.deepsense.ai/npi_registry/mcp",
+                require_approval="never", project_connection_id="npi-registry"),
+        MCPTool(server_label="cms-coverage", server_url="https://mcp.deepsense.ai/cms_coverage/mcp",
+                require_approval="never", project_connection_id="cms-coverage"),
+    ]
 
     agents = [
         {
@@ -115,11 +260,9 @@ def run() -> None:
             "env": {
                 "AZURE_AI_PROJECT_ENDPOINT": project_endpoint,
                 "AZURE_OPENAI_DEPLOYMENT_NAME": model_name,
-                "MCP_ICD10_CODES": mcp_icd10,
-                "MCP_PUBMED": mcp_pubmed,
-                "MCP_CLINICAL_TRIALS": mcp_trials,
                 "APPLICATION_INSIGHTS_CONNECTION_STRING": app_insights_cs,
             },
+            "tools": clinical_tools,
         },
         {
             "name": "coverage-assessment-agent",
@@ -129,10 +272,9 @@ def run() -> None:
             "env": {
                 "AZURE_AI_PROJECT_ENDPOINT": project_endpoint,
                 "AZURE_OPENAI_DEPLOYMENT_NAME": model_name,
-                "MCP_NPI_REGISTRY": mcp_npi,
-                "MCP_CMS_COVERAGE": mcp_cms,
                 "APPLICATION_INSIGHTS_CONNECTION_STRING": app_insights_cs,
             },
+            "tools": coverage_tools,
         },
         {
             "name": "compliance-agent",
@@ -141,12 +283,12 @@ def run() -> None:
             "memory": "1Gi",
             "env": {
                 "AZURE_AI_PROJECT_ENDPOINT": project_endpoint,
-                # Compliance uses gpt-5.4 for consistency with all other agents
                 "AZURE_OPENAI_DEPLOYMENT_NAME": os.environ.get(
                     "AZURE_OPENAI_COMPLIANCE_DEPLOYMENT_NAME", "gpt-5.4"
                 ),
                 "APPLICATION_INSIGHTS_CONNECTION_STRING": app_insights_cs,
             },
+            "tools": [],
         },
         {
             "name": "synthesis-agent",
@@ -158,6 +300,7 @@ def run() -> None:
                 "AZURE_OPENAI_DEPLOYMENT_NAME": model_name,
                 "APPLICATION_INSIGHTS_CONNECTION_STRING": app_insights_cs,
             },
+            "tools": [],
         },
     ]
 
@@ -178,6 +321,7 @@ def run() -> None:
                     memory=agent_def["memory"],
                     image=agent_def["image"],
                     environment_variables=agent_def["env"],
+                    tools=agent_def["tools"],
                 ),
             )
             version_num = agent_version.version
@@ -191,44 +335,34 @@ def run() -> None:
         try:
             result = subprocess.run(
                 [
-                    "az",
-                    "cognitiveservices",
-                    "agent",
-                    "start",
-                    "--account-name",
-                    account_name,
-                    "--project-name",
-                    project_name,
-                    "--name",
-                    name,
-                    "--agent-version",
-                    str(version_num),
+                    "az", "cognitiveservices", "agent", "start",
+                    "--account-name", account_name,
+                    "--project-name", project_name,
+                    "--name", name,
+                    "--agent-version", str(version_num),
                 ],
-                check=True,
-                capture_output=True,
-                text=True,
+                check=True, capture_output=True, text=True,
             )
             print(" started")
         except subprocess.CalledProcessError as exc:
-            # "conflict" means the agent is already running — treat as success
             if "already exists with status Running" in (exc.stderr or ""):
                 print(" already running")
             else:
                 print(
                     f" WARNING: could not auto-start via CLI ({exc.returncode}).\n"
-                    f"  Manually start from Foundry portal: Agents → {name} → Start",
+                    f"  Manually start from Foundry portal: Agents > {name} > Start",
                 )
         except FileNotFoundError:
             print(
-                " WARNING: 'az' CLI not found — start the agent from Foundry portal:\n"
-                f"  Agents → {name} → Start"
+                " WARNING: 'az' CLI not found -- start the agent from Foundry portal:\n"
+                f"  Agents > {name} > Start"
             )
 
     print()
     print("  All 4 agents registered successfully.")
     print(
         "  Note: if auto-start failed, start each agent from the Foundry portal:\n"
-        "  Microsoft Foundry portal → your project → Agents → select agent → Start"
+        "  Microsoft Foundry portal > your project > Agents > select agent > Start"
     )
 
 
