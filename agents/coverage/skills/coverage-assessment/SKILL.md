@@ -104,11 +104,37 @@ which Medicare Administrative Contractors' LCDs apply.
 
 #### Step 3: Search Coverage Policies
 
-1. Call `mcp__cms-coverage__search_national_coverage(keyword=..., document_type="NCD", limit=10)`
-   with the procedure description and relevant diagnosis terms.
-2. Call `mcp__cms-coverage__search_local_coverage(keyword=..., document_type="LCD", limit=10)`
-   for regional LCD policies.
-3. Optionally call `mcp__cms-coverage__get_whats_new_report(days_back=30)`
+Use a **multi-pass search strategy** to maximize the chance of finding the
+correct policy. A single keyword often returns irrelevant results (e.g.,
+searching "bronchoscopy" may return molecular biomarker LCDs instead of
+the procedure LCD).
+
+**Search pass 1 — CPT/HCPCS code as keyword:**
+1. Call `mcp__cms-coverage__search_local_coverage(keyword="<CPT code>", document_type="LCD", limit=10)`
+   using the actual CPT/HCPCS code number (e.g., "31628").
+2. Call `mcp__cms-coverage__search_national_coverage(keyword="<CPT code>", document_type="NCD", limit=10)`.
+
+**Search pass 2 — Procedure name (if pass 1 returns no relevant results):**
+3. Call `mcp__cms-coverage__search_local_coverage(keyword="<procedure name>", document_type="LCD", limit=10)`
+   using the procedure's clinical name (e.g., "transbronchial lung biopsy").
+4. Call `mcp__cms-coverage__search_national_coverage(keyword="<procedure name>", document_type="NCD", limit=10)`.
+
+**Search pass 3 — Broader category (if passes 1-2 return no relevant results):**
+5. Try a broader category keyword (e.g., "diagnostic bronchoscopy" instead of
+   "transbronchial lung biopsy", or "knee arthroplasty" instead of "total knee
+   replacement"). Also try the primary diagnosis description as a keyword.
+
+**Relevance filtering:** After collecting results from all passes, evaluate each
+returned policy for relevance to the ACTUAL procedure and diagnosis:
+- A policy is **relevant** if its title, covered indications, or HCPCS/CPT
+  code list relates to the requested procedure or diagnosis category.
+- A policy is **not relevant** if it covers a different procedure that merely
+  mentions the same anatomical region (e.g., a molecular biomarker LCD that
+  mentions "following bronchoscopy" is NOT a bronchoscopy procedure LCD).
+- Mark irrelevant policies with `"relevant": false` in the output.
+- Only retrieve full policy details (Step 4) for relevant policies.
+
+6. Optionally call `mcp__cms-coverage__get_whats_new_report(days_back=30)`
    to check if any found policies were recently updated.
 
 **Coverage Policy Limitation Notice:**
@@ -276,7 +302,12 @@ Return JSON with this exact structure:
 <empty_result_recovery>
 If an MCP lookup returns empty or partial results:
 - Do not immediately conclude that no policy exists or the provider is invalid.
-- Try at least one fallback: alternate search keywords, broader filters, or a related procedure description.
+- Follow the multi-pass search strategy in Step 3: try CPT code → procedure
+  name → broader category → diagnosis description, in that order.
+- If all search passes return only irrelevant policies (e.g., molecular
+  biomarker LCDs when searching for a procedure), still mark them with
+  `"relevant": false` and note "No directly applicable LCD/NCD found for
+  the requested procedure" in coverage_limitations.
 - For NPI lookups: try with alternate name formats before marking as not_found.
 - Only then report the failure in tool_results, stating exactly what was tried.
 </empty_result_recovery>
