@@ -39,7 +39,8 @@ and structure the clinical narrative for downstream coverage assessment.
 
 #### PubMed MCP (pubmed)
 - `search_articles(query, max_results)` — Search biomedical literature for evidence
-  supporting medical necessity and treatment approach.
+  supporting medical necessity and treatment approach. Use space-separated keywords
+  only — do NOT use slashes (`/`) as separators (they cause 0 results on PubMed).
 
 #### Clinical Trials MCP (clinical-trials)
 - `search_trials(query, status, phase, limit)` — Search ClinicalTrials.gov for
@@ -92,7 +93,12 @@ Parse the clinical notes to extract:
 - **Functional limitations**: Impact on daily activities, work, mobility
 - **Diagnostic findings**: Imaging, labs, exam findings with dates
 - **Duration and progression**: How long and how the condition has changed
-- **Medical history and comorbidities**: Relevant past conditions
+- **Medical history and comorbidities**: Relevant past conditions — look for
+  sections labelled "PMH", "Past Medical History", "Medical History",
+  "Comorbidities", or equivalent. Extract all chronic conditions (e.g. COPD,
+  hypertension, diabetes), prior surgeries, allergies, current medications,
+  and family history. Do NOT mark this field as "Not found" if any of these
+  details appear anywhere in the notes, even if embedded in another section.
 
 #### Step 4: Calculate Extraction Confidence
 
@@ -114,6 +120,16 @@ If the clinical scenario is complex or the treatment is non-standard:
 - Use PubMed `search_articles` to find evidence supporting medical necessity
 - Focus on systematic reviews, meta-analyses, and clinical guidelines
 - Limit to 3-5 most relevant results
+
+**PubMed query formatting rules** (critical — incorrect formatting returns 0 results):
+- Separate search terms with **spaces**, never with slashes (`/`).
+  - CORRECT: `"pulmonary nodule bronchoscopy biopsy"`
+  - WRONG:  `"pulmonary nodule/bronchoscopy/biopsy"` ← returns 0 results
+- Use simple, focused keyword phrases (3-5 terms).
+- For the initial search, combine the primary diagnosis and proposed procedure:
+  e.g. `"solitary pulmonary nodule transbronchial lung biopsy"`
+- If the initial search returns 0 results, broaden by using fewer or more
+  general terms: e.g. `"pulmonary nodule biopsy guidelines"`
 
 #### Step 6: Search Clinical Trials
 

@@ -179,6 +179,7 @@ For each coverage criterion extracted from the policy:
 
 This is an **AUDITABLE** criterion that MUST appear in every `criteria_assessment`.
 
+**When a coverage policy (LCD/NCD) was found:**
 Cross-reference submitted ICD-10 codes with the coverage policy's listed
 indications/covered diagnoses:
 - If primary diagnosis appears in policy's covered indications: **MET**
@@ -186,6 +187,27 @@ indications/covered diagnoses:
 - If policy lacks explicit indication list: **INSUFFICIENT**
 
 Include specific evidence: which codes matched which indications.
+
+**When NO coverage policy was found (no-policy path):**
+Most Medicare procedures have no specific LCD/NCD — coverage falls under
+the general "reasonable and necessary" standard (§1862(a)(1)(A)). In this
+case, evaluate Diagnosis-Policy Alignment as a **Medical Necessity Assessment**
+instead:
+- Assess whether the submitted ICD-10 diagnoses clinically justify the
+  requested procedure based on the clinical evidence from the Clinical
+  Reviewer Agent.
+- **MET** (confidence >= 70): The diagnosis clearly supports the procedure —
+  e.g., documented progression, failed conservative treatment, objective
+  diagnostic findings, and the procedure is standard of care for the condition.
+- **INSUFFICIENT** (confidence 40-69): The diagnosis may support the procedure
+  but clinical evidence has gaps (e.g., no prior treatment documented, no
+  imaging confirming progression).
+- **NOT_MET** (confidence < 40): The diagnosis does not appear to justify the
+  procedure based on available clinical evidence.
+- Set `source` to `"Medical Necessity (§1862(a)(1)(A)) — no specific LCD/NCD"`
+- In `notes`, cite the specific clinical findings that support or fail to
+  support medical necessity (severity indicators, prior treatments, diagnostic
+  findings, clinical progression).
 
 #### Step 7: Documentation Gap Analysis
 
@@ -274,7 +296,11 @@ Return JSON with this exact structure:
   Medicare Advantage plans may differ.
 - If provider NPI is invalid or inactive, flag it prominently in
   `provider_verification`.
-- If no coverage policy is found, state this clearly — do NOT invent criteria.
+- If no coverage policy is found, do NOT invent policy criteria. Instead,
+  evaluate medical necessity under the general "reasonable and necessary"
+  standard using the clinical evidence from the Clinical Reviewer Agent.
+  This is standard Medicare practice — most procedures are covered without
+  a specific LCD/NCD.
 - If an MCP call fails, report the failure in `tool_results` — do NOT generate
   fake data.
 - Critical documentation gaps block approval. Non-critical gaps are informational.

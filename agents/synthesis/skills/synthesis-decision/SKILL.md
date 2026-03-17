@@ -49,14 +49,40 @@ Evaluate gates in strict sequential order. **Stop at the first failing gate.**
 
 #### Gate 3: Medical Necessity Criteria
 
+**Path A — Coverage policy found (LCD/NCD exists):**
+
 | Scenario | Action |
 |----------|--------|
 | All required criteria MET | APPROVE |
 | Any required criterion NOT_MET | PEND — request additional documentation |
 | Any required criterion INSUFFICIENT | PEND — specify what evidence is needed |
-| No coverage policy found | PEND — manual policy review needed |
-| Documentation incomplete (Compliance) | PEND — specify missing items |
 | Diagnosis-Policy Alignment NOT_MET | PEND — diagnosis outside policy scope |
+| Documentation incomplete (Compliance) | PEND — specify missing items |
+
+**Path B — No coverage policy found (medical necessity fallback):**
+
+Most Medicare procedures (~80%+) have no specific LCD/NCD. Absence of a
+coverage determination does NOT mean the procedure isn't covered — it means
+coverage falls under Medicare's general "reasonable and necessary" standard
+(Social Security Act §1862(a)(1)(A)). In this path, evaluate medical
+necessity using the clinical evidence directly.
+
+| Scenario | Action |
+|----------|--------|
+| Provider specialty appropriate AND clinical evidence strongly supports medical necessity (extraction_confidence >= 70, severity indicators present, standard-of-care treatment) | APPROVE — note "approved under general medical necessity; no specific LCD/NCD applies" |
+| Provider specialty appropriate AND clinical evidence moderately supports but has gaps (extraction_confidence 50-69 OR missing key severity indicators) | PEND — specify what additional clinical documentation is needed |
+| Provider specialty NOT appropriate for procedure | PEND — request specialist referral or justification |
+| Clinical evidence weak (extraction_confidence < 50) or contradicts necessity | PEND — request additional clinical justification |
+| Documentation incomplete (Compliance — critical items missing) | PEND — specify missing items |
+
+**Medical necessity indicators** (from Clinical Reviewer) that support approval
+when no specific policy exists:
+- Documented clinical progression or worsening (duration_and_progression)
+- Failed conservative treatment (prior_treatments with documented failure)
+- Objective diagnostic findings supporting the procedure (diagnostic_findings)
+- Severity indicators consistent with need for intervention
+- Procedure aligns with clinical guidelines or standard of care
+- Provider specialty clinically appropriate for the procedure
 
 #### Catch-All
 
@@ -66,11 +92,15 @@ Evaluate gates in strict sequential order. **Stop at the first failing gate.**
 | Agent error in any sub-agent | PEND — note error, require manual review |
 
 **IMPORTANT**: In LENIENT mode, recommend **APPROVE** or **PEND** only — never DENY.
-Only approve when ALL three gates pass cleanly.
+Approve when ALL three gates pass — either via policy-based criteria (Path A)
+or via medical necessity fallback (Path B) when no policy exists.
 
 ### Confidence Scoring
 
 #### Weighted Formula
+
+You MUST compute the confidence score using this exact formula — do NOT
+estimate, round early, or use subjective judgment.
 
 ```
 overall = (0.4 * avg_criteria / 100)
@@ -88,8 +118,50 @@ Where:
   Insurance Plan Type are non-blocking — do not penalize.
 - **policy_match** (0.0-1.0):
   - 1.0 if policy found AND primary diagnosis aligns (Diagnosis-Policy Alignment MET)
+  - 0.75 if no policy found BUT medical necessity fallback passes (Path B approve)
   - 0.5 if policy found but alignment unclear (INSUFFICIENT)
-  - 0.0 if no policy found or alignment NOT_MET
+  - 0.25 if no policy found AND medical necessity fallback is borderline (Path B pend)
+  - 0.0 if policy found AND alignment NOT_MET
+
+#### Step-by-step calculation (REQUIRED)
+
+Before setting the `confidence` field, work through these steps explicitly:
+
+1. List each criterion from Coverage Agent's `criteria_assessment` with its
+   confidence score. Compute `avg_criteria` = sum of scores / number of criteria.
+2. Read `extraction_confidence` from Clinical Reviewer output → `extraction`.
+3. Count incomplete/missing Compliance checklist items (excluding Insurance ID
+   and Insurance Plan Type). `compliance_score` = max(0, 1.0 - 0.1 × count).
+4. Determine `policy_match`:
+   - Was a coverage policy found? Was Diagnosis-Policy Alignment MET?
+   - Set 1.0 / 0.5 / 0.0 per the rules above.
+5. Plug into formula:
+   ```
+   overall = (0.4 * avg_criteria / 100) + (0.3 * extraction / 100)
+           + (0.2 * compliance_score) + (0.1 * policy_match)
+   ```
+6. Round to 2 decimal places → this is the `confidence` value.
+7. Map to confidence_level: >= 0.80 → HIGH, >= 0.50 → MEDIUM, < 0.50 → LOW.
+
+**Worked example (no-policy path with strong clinical evidence):**
+- criteria_assessment scores: [95, 85] → avg_criteria = 90
+  (Provider Specialty MET 95, Medical Necessity MET 85)
+- extraction_confidence: 92 → extraction = 92
+- Compliance: 0 incomplete items → compliance_score = 1.0
+- No policy found, but medical necessity fallback passes → policy_match = 0.75
+- overall = (0.4 × 90/100) + (0.3 × 92/100) + (0.2 × 1.0) + (0.1 × 0.75)
+         = 0.36 + 0.276 + 0.20 + 0.075 = 0.91
+- confidence = 0.91, confidence_level = "HIGH"
+
+**Worked example (no-policy path with weak clinical evidence):**
+- criteria_assessment scores: [95, 25] → avg_criteria = 60
+  (Provider Specialty MET 95, Medical Necessity INSUFFICIENT 25)
+- extraction_confidence: 92 → extraction = 92
+- Compliance: 0 incomplete items → compliance_score = 1.0
+- No policy found, medical necessity borderline → policy_match = 0.25
+- overall = (0.4 × 60/100) + (0.3 × 92/100) + (0.2 × 1.0) + (0.1 × 0.25)
+         = 0.24 + 0.276 + 0.20 + 0.025 = 0.74
+- confidence = 0.74, confidence_level = "MEDIUM"
 
 #### Confidence Levels
 
@@ -169,10 +241,16 @@ Return JSON with this exact structure:
 - Default to PEND when uncertain — never DENY in LENIENT mode.
 - If Compliance Agent finds critical gaps, that alone warrants PEND at Gate 3.
 - If Clinical Reviewer found invalid codes, PEND at Gate 2.
-- If Coverage Agent found no matching policy, PEND at Gate 3.
+- If Coverage Agent found no matching policy, evaluate Gate 3 Path B
+  (medical necessity fallback) — do NOT auto-pend just because no LCD/NCD exists.
 - Be concise but cite which agent produced each finding.
 - Reference specific criterion statuses and confidence scores in the rationale.
 - Compute confidence using the weighted formula — do NOT estimate subjectively.
+  The `confidence` field MUST equal the formula result (rounded to 2 decimals).
+  The `confidence_components` in `synthesis_audit_trail` MUST contain the exact
+  input values used, so that `(criteria_weight × criteria_score) + (extraction_weight
+  × extraction_score) + (compliance_weight × compliance_score) + (policy_weight ×
+  policy_score)` equals the `confidence` field.
 - Include the `audit_trail` object showing confidence breakdown.
 - Do NOT generate `tool_results` — those come from the individual agents.
 - The `disclaimer` field is MANDATORY in every output.
