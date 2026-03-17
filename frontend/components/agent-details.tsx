@@ -62,6 +62,7 @@ function statusBadge(status: string) {
     NOT_MET: "destructive",
     inactive: "destructive",
     not_found: "destructive",
+    info: "secondary",
   };
   return <Badge variant={map[status] ?? "secondary"}>{status}</Badge>;
 }
@@ -705,7 +706,7 @@ function CoverageTab({ data: raw }: { data: CoverageResult }) {
                       <Badge variant="outline">{p.type}</Badge>
                     </TableCell>
                     <TableCell>
-                      {statusBadge(p.relevant ? "pass" : "fail")}
+                      {statusBadge(p.relevant ? "pass" : "info")}
                     </TableCell>
                   </TableRow>
                 ))}
