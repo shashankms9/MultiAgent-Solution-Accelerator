@@ -29,8 +29,7 @@ class NewAgentResult(BaseModel):
 import os
 from pathlib import Path
 
-import httpx
-from agent_framework import MCPStreamableHTTPTool, SkillsProvider
+from agent_framework import SkillsProvider
 from agent_framework.azure import AzureOpenAIResponsesClient
 from azure.ai.agentserver.agentframework import from_agent_framework
 from azure.identity import DefaultAzureCredential
@@ -40,21 +39,13 @@ from schemas import NewAgentResult
 
 load_dotenv(override=True)  # override=True required for Foundry-deployed env vars
 
-# DeepSense CloudFront routes on User-Agent — omit this client if no MCP
-_MCP_HTTP_CLIENT = httpx.AsyncClient(
-    headers={"User-Agent": "claude-code/1.0"},
-    timeout=httpx.Timeout(60.0),
-)
+# MCP tools are managed by Foundry Agent Service as project-level connections.
+# No MCPStreamableHTTPTool or httpx wiring needed — Foundry proxies MCP calls.
+# See scripts/register_agents.py for MCP tool registration.
 
 
 def main() -> None:
-    new_tool = MCPStreamableHTTPTool(
-        name="new-server",
-        description="Brief description shown to the model",
-        url=os.environ["MCP_NEW_SERVER"],
-        http_client=_MCP_HTTP_CLIENT,
-        load_prompts=False,
-    )  # omit if no MCP
+    # MCP tools are injected by Foundry Agent Service at runtime (tools=[])
 
     skills_provider = SkillsProvider(
         skill_paths=str(Path(__file__).parent / "skills")
@@ -85,7 +76,7 @@ Key conventions:
 - Constructor takes `project_endpoint` + `deployment_name` + `credential=DefaultAzureCredential()` — no API keys
 - `name`, `instructions`, `tools`, `context_providers`, and `default_options` all go on `.as_agent()`, not the constructor
 - `SkillsProvider` is passed via `context_providers=[skills_provider]` in `.as_agent()`
-- `MCPStreamableHTTPTool` with a shared `httpx.AsyncClient` injects the `User-Agent` header automatically; `load_prompts=False` prevents the agent server from trying to fetch MCP prompt lists on startup
+- MCP tools are managed by Foundry as project tool connections — no `MCPStreamableHTTPTool` or `httpx` wiring needed in agent code; see `scripts/register_agents.py` for how to add new MCP tools
 - `load_dotenv(override=True)` is required — `override=True` ensures Foundry-injected env vars take precedence
 - `from_agent_framework(agent).run()` exposes the agent as a `POST /responses` HTTP endpoint
 - Agents that need upstream results receive them as JSON in the request payload
@@ -120,25 +111,23 @@ Before completing, verify:
 - Do NOT make final approval/denial decisions (synthesis agent does that)
 ```
 
-**Step 3 — MCP wiring** (`agents/new-agent/main.py`):
+**Step 3 — MCP tool registration** (`scripts/register_agents.py`):
 
-If the agent uses MCP servers, add the `MCPStreamableHTTPTool` in `main.py` (already shown in Step 1) and expose the URL via an environment variable:
+If the agent uses MCP servers, add a Foundry MCPTool connection in `scripts/register_agents.py`:
 
-```yaml
-# docker-compose.yml (local)
-new-agent:
-  environment:
-    MCP_NEW_SERVER: https://mcp.example.com/new-server/mcp
+1. Add the MCP server to `MCP_CONNECTIONS` (with Key-based auth if the server requires custom headers):
+```python
+{"name": "new-server", "url": "https://mcp.example.com/new-server/mcp",
+ "auth": "CustomKeys", "keys": {"User-Agent": "claude-code/1.0"}},
 ```
 
-For production (Azure), add the env var to the agent's `env:` block in `agents/new-agent/agent.yaml` —
-agents are deployed via Foundry Hosted Agents, so MCP URLs belong in the agent descriptor rather than `infra/main.bicep`:
-
-```yaml
-# agents/new-agent/agent.yaml — inside the env: block
-  - name: MCP_NEW_SERVER
-    value: https://mcp.example.com/new-server/mcp
+2. Add an `MCPTool` reference to the agent's `tools` list:
+```python
+MCPTool(server_label="new-server", server_url="https://mcp.example.com/new-server/mcp",
+        require_approval="never", project_connection_id="new-server"),
 ```
+
+The connection is created automatically during `azd up` and appears in the Foundry portal under **Build → Tools**.
 
 **Step 4 — Orchestrator** (`backend/app/agents/orchestrator.py`):
 
@@ -218,7 +207,7 @@ Update `_build_audit_trail()`, `_generate_audit_justification()`, and
 | `agents/new-agent/schemas.py` | New file: Pydantic output model |
 | `agents/new-agent/skills/new-agent/SKILL.md` | New file: skill instructions |
 | `agents/new-agent/Dockerfile` | New file: container image |
-| `agents/new-agent/requirements.txt` | New file: `agent-framework-core>=1.0.0rc2,<=1.0.0rc3`, `azure-ai-agentserver-core>=1.0.0b16`, `azure-ai-agentserver-agentframework>=1.0.0b16`, `azure-identity`, `httpx`, `python-dotenv` (note: `azure-ai-projects` is resolved transitively) |
+| `agents/new-agent/requirements.txt` | New file: `agent-framework-core>=1.0.0rc2,<=1.0.0rc3`, `azure-ai-agentserver-core>=1.0.0b16`, `azure-ai-agentserver-agentframework>=1.0.0b16`, `azure-identity`, `python-dotenv` (note: `azure-ai-projects` is resolved transitively) |
 | `docker-compose.yml` | Add new agent service + env vars |
 | `agents/new-agent/agent.yaml` | New file: Foundry Hosted Agent descriptor (name, runtime, resources, env vars) |
 | `scripts/register_agents.py` | Add new agent to the registration list |
@@ -234,42 +223,24 @@ Update `_build_audit_trail()`, `_generate_audit_justification()`, and
 
 ## Add a New MCP Server
 
-MCP is wired **per agent container** — there is no central MCP registry in the backend.
-Four files need changes:
+MCP tools are managed by **Foundry Agent Service** — no per-container MCP wiring needed.
+Two files need changes:
 
-**Step 1 — Add `MCPStreamableHTTPTool`** (`agents/<target-agent>/main.py`):
+**Step 1 — Register the MCP connection** (`scripts/register_agents.py`):
+
+Add the new MCP server to `MCP_CONNECTIONS` and create an `MCPTool` reference on the target agent:
 
 ```python
-cpt_tool = MCPStreamableHTTPTool(
-    name="cpt-validator",
-    description="Validate CPT/HCPCS procedure codes and look up RVU values",
-    url=os.environ["MCP_CPT_VALIDATOR"],
-    http_client=_MCP_HTTP_CLIENT,          # reuse the shared client
-    load_prompts=False,
-)
+# In MCP_CONNECTIONS list:
+{"name": "cpt-validator", "url": "https://mcp.example.com/cpt-validator/mcp",
+ "auth": "CustomKeys", "keys": {"User-Agent": "claude-code/1.0"}},
 
-agent = AzureOpenAIResponsesClient(
-    project_endpoint=os.environ["AZURE_AI_PROJECT_ENDPOINT"],
-    deployment_name=os.environ["AZURE_OPENAI_DEPLOYMENT_NAME"],
-    credential=DefaultAzureCredential(),
-).as_agent(
-    name="clinical-reviewer-agent",
-    instructions="...",
-    tools=[..., cpt_tool],             # add to existing tools list
-    context_providers=[skills_provider],
-    default_options={"response_format": ClinicalResult},
-)
+# In the agent's tools list:
+MCPTool(server_label="cpt-validator", server_url="https://mcp.example.com/cpt-validator/mcp",
+        require_approval="never", project_connection_id="cpt-validator"),
 ```
 
-**Step 2 — Environment variable** (`docker-compose.yml` and Azure container env):
-
-```yaml
-clinical-agent:
-  environment:
-    MCP_CPT_VALIDATOR: https://mcp.example.com/cpt-validator/mcp
-```
-
-**Step 3 — SKILL.md** (`agents/<target-agent>/skills/<skill-name>/SKILL.md`):
+**Step 2 — SKILL.md** (`agents/<target-agent>/skills/<skill-name>/SKILL.md`):
 
 ```markdown
 #### CPT Validator MCP (cpt-validator)
@@ -277,14 +248,12 @@ clinical-agent:
 - `mcp__cpt-validator__lookup_cpt(code)` — Get description and RVU value
 ```
 
-**Step 4 — Orchestrator** (only if adding a new agent role).
+**Step 3 — Orchestrator** (only if adding a new agent role).
 
 **Architecture summary:**
 
 ```
-agents/<agent>/main.py               → MCPStreamableHTTPTool instantiation
-docker-compose.yml                   → MCP URL env var (local)
-infra/main.bicep                     → MCP URL env var (production, agent env: block)
+scripts/register_agents.py           → MCP connection creation + MCPTool registration
 agents/<agent>/skills/*/SKILL.md     → Usage instructions for the agent
 backend/app/agents/orchestrator.py   → Pipeline phases (only if adding a new agent role)
 ```
@@ -318,31 +287,37 @@ Edit `_KNOWN_CODES` in `backend/app/services/cpt_validation.py`.
 
 ---
 
-## Use MCP with Azure OpenAI Models
+## Use MCP with Foundry Hosted Agents
 
-Use `MCPStreamableHTTPTool` from the Agent Framework:
+MCP tools are registered as Foundry project tool connections via `scripts/register_agents.py`.
+To test an MCP tool directly, use the Foundry-managed approach:
 
 ```python
-import httpx
-from agent_framework import MCPStreamableHTTPTool
+from azure.ai.projects import AIProjectClient
+from azure.ai.projects.models import PromptAgentDefinition, MCPTool
+from azure.identity import DefaultAzureCredential
 
-http_client = httpx.AsyncClient(
-    headers={"User-Agent": "claude-code/1.0"},
-    timeout=httpx.Timeout(60.0),
-)
-mcp_tool = MCPStreamableHTTPTool(
-    name="npi",
-    description="Validate NPI numbers",
-    url=NPI_URL,
-    http_client=http_client,
-    load_prompts=False,
+client = AIProjectClient(endpoint=PROJECT_ENDPOINT, credential=DefaultAzureCredential())
+openai = client.get_openai_client()
+
+# Create a test agent with the MCP tool
+agent = client.agents.create_version(
+    agent_name="test-agent",
+    definition=PromptAgentDefinition(
+        model="gpt-5.4",
+        instructions="Use the NPI tool to validate provider numbers.",
+        tools=[MCPTool(server_label="npi", server_url="https://mcp.deepsense.ai/npi_registry/mcp",
+                       require_approval="never", project_connection_id="npi-registry")],
+    ),
 )
 
-async with mcp_tool:
-    result = await mcp_tool.session.call_tool("npi_validate", {"npi": "1234567893"})
+response = openai.responses.create(
+    input="Validate NPI 1234567893",
+    extra_body={"agent_reference": {"name": "test-agent", "type": "agent_reference"}},
+)
+print(response.output_text)
 ```
-
-In the current architecture this MCP wiring lives directly in the agent container's `main.py`; the backend only orchestrates HTTP calls to the `/responses` endpoints.
+In the current architecture MCP tools are managed by Foundry Agent Service as project-level connections; the agent containers don't wire MCP directly.
 
 ---
 

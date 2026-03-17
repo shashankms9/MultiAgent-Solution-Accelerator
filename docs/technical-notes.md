@@ -28,27 +28,19 @@ endpoint, and is registered with **Microsoft Foundry** as a Hosted Agent via
 
 ---
 
-## MCP Header Injection
+## MCP Tool Connections
 
-The DeepSense-hosted MCP servers require `User-Agent: claude-code/1.0` due
-to CloudFront routing rules. This is injected in each agent container via a
-single shared `httpx.AsyncClient`:
+MCP tools are managed by **Foundry Agent Service** as project-level tool connections,
+created automatically by `scripts/register_agents.py` via the ARM REST API during `azd up`.
 
-```python
-_MCP_HTTP_CLIENT = httpx.AsyncClient(
-    headers={"User-Agent": "claude-code/1.0"},
-    timeout=httpx.Timeout(60.0),
-)
+The DeepSense-hosted MCP servers require `User-Agent: claude-code/1.0` due to CloudFront
+routing rules. This header is stored in the Foundry project connection (Key-based auth)
+and injected by Foundry's managed proxy. PubMed uses unauthenticated access.
 
-icd10_tool = MCPStreamableHTTPTool(
-    name="icd10-codes",
-    url=os.environ["MCP_ICD10_CODES"],
-    http_client=_MCP_HTTP_CLIENT,
-)
-```
+Agent containers do not wire MCP connections directly — they set `tools=[]` and Foundry
+injects the MCP tools at runtime based on the `MCPTool` definitions in the agent registration.
 
-The MCP servers are **self-hosted** — no Foundry Tool MCP registration needed.
-The containers connect directly to the MCP server URLs via environment variables.
+All 5 MCP tools are visible in the Foundry portal under **Build → Tools**.
 
 ---
 

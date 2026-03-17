@@ -139,62 +139,51 @@ prior-auth-maf/
 
 ---
 
-## MCP Integration — Per-Container MCPStreamableHTTPTool
+## MCP Integration — Foundry-Managed Tool Connections
 
-Each agent container wires its MCP servers directly in `main.py` via
-`MCPStreamableHTTPTool` from the Microsoft Agent Framework. The backend has
-**no MCP configuration** — MCP is entirely owned by the agent containers.
+MCP tools are managed by **Foundry Agent Service** as project-level tool connections.
+The backend and agent containers have **no MCP wiring** — MCP is entirely owned by Foundry.
 
-### The User-Agent Requirement
+### How MCP Tools Are Provisioned
 
-The DeepSense-hosted MCP servers use CloudFront routing that requires `User-Agent: claude-code/1.0`. This header is configured in the Foundry project tool connection (Key-based auth) created by `scripts/register_agents.py`. PubMed (`pubmed.mcp.claude.com`) works without authentication.
+During `azd up`, the `scripts/register_agents.py` script:
 
-### How MCP Tools Are Managed
-
-MCP tools are created per-agent in each container's `main.py`:
+1. **Creates project connections** via the ARM REST API (idempotent PUT) for each MCP server
+2. **Registers agents** with `MCPTool` references linking to those connections
+3. Foundry Agent Service proxies all MCP calls through its managed infrastructure
 
 ```python
-# agents/clinical/main.py
+# scripts/register_agents.py (simplified)
 
-import httpx
-from agent_framework import MCPStreamableHTTPTool
+from azure.ai.projects.models import MCPTool, HostedAgentDefinition
 
-_MCP_HTTP_CLIENT = httpx.AsyncClient(
-    headers={"User-Agent": "claude-code/1.0"},
-    timeout=httpx.Timeout(60.0),
-)
+# Foundry MCPTool references — linked to project connections
+clinical_tools = [
+    MCPTool(server_label="icd10", server_url="...",
+            require_approval="never", project_connection_id="icd10"),
+    MCPTool(server_label="pubmed", server_url="...",
+            require_approval="never", project_connection_id="pubmed"),
+    MCPTool(server_label="clinical-trials", server_url="...",
+            require_approval="never", project_connection_id="clinical-trials"),
+]
 
-icd10_tool = MCPStreamableHTTPTool(
-    name="icd10-codes",
-    url=os.environ["MCP_ICD10_CODES"],
-    http_client=_MCP_HTTP_CLIENT,
+agent = client.agents.create_version(
+    agent_name="clinical-reviewer-agent",
+    definition=HostedAgentDefinition(..., tools=clinical_tools),
 )
-pubmed_tool = MCPStreamableHTTPTool(
-    name="pubmed",
-    url=os.environ["MCP_PUBMED"],
-    http_client=_MCP_HTTP_CLIENT,
-)
-trials_tool = MCPStreamableHTTPTool(
-    name="clinical-trials",
-    url=os.environ["MCP_CLINICAL_TRIALS"],
-    http_client=_MCP_HTTP_CLIENT,
-)
-
-agent = AzureOpenAIResponsesClient(...).as_agent(
-    tools=[icd10_tool, pubmed_tool, trials_tool],
-    default_options={"response_format": ClinicalResult},
-)
-from_agent_framework(agent).run()
 ```
 
-### Approaches Tested for MCP Header Injection
+### Authentication
 
-| Approach | Works? | Notes |
-|---|---|---|
-| `MCPStreamableHTTPTool` + `httpx.AsyncClient` | ✅ | Model-agnostic, used in all 4 agent containers |
-| `McpHttpServerConfig.headers` in `ClaudeAgentOptions.mcp_servers` | Yes | Only for ClaudeAgent (old pattern, not used) |
-| Azure OpenAI Responses API `type: "mcp"` with `headers` | No | Azure proxy doesn't forward `User-Agent` |
-| Custom `MCPClient` with `mcp` Python SDK | Yes | Works but unnecessary — replaced by MCPStreamableHTTPTool |
+| MCP Server | Provider | Auth Type | Header |
+|-----------|----------|-----------|--------|
+| ICD-10, ClinicalTrials, NPI, CMS | DeepSense | Key-based | `User-Agent: claude-code/1.0` |
+| PubMed | Anthropic | Unauthenticated | None |
+
+Authentication headers are stored in Foundry project connections (Key-based auth)
+and injected by Foundry's proxy — agent containers do not handle MCP auth.
+
+MCP tools are visible in the Foundry portal under **Build → Tools**.
 
 ---
 

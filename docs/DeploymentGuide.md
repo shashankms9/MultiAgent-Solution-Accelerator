@@ -202,14 +202,9 @@ AZURE_AI_PROJECT_ENDPOINT=https://<resource-name>.services.ai.azure.com
 
 # Model deployment name
 AZURE_OPENAI_DEPLOYMENT_NAME=gpt-5.4
-
-# MCP server URLs (DeepSense + Anthropic Healthcare MCP, defaults pre-configured in agent.yaml)
-MCP_NPI_REGISTRY=https://mcp.deepsense.ai/npi_registry/mcp
-MCP_ICD10_CODES=https://mcp.deepsense.ai/icd10_codes/mcp
-MCP_CMS_COVERAGE=https://mcp.deepsense.ai/cms_coverage/mcp
-MCP_PUBMED=https://pubmed.mcp.claude.com/mcp
-MCP_CLINICAL_TRIALS=https://mcp.deepsense.ai/clinical_trials/mcp
 ```
+
+> **MCP tools:** MCP server connections (ICD-10, PubMed, ClinicalTrials, NPI, CMS Coverage) are managed by Foundry Agent Service as project-level tool connections. They are created automatically by `scripts/register_agents.py` during `azd up` and visible in the Foundry portal under **Build → Tools**. No MCP environment variables are needed.
 
 > **Authentication note:** MAF agents use `DefaultAzureCredential` (managed identity on Azure, Azure CLI locally) — no API key required. For local Docker Compose, ensure your local Azure CLI session is active (`az login`) or set `AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET` if running without CLI auth.
 
@@ -233,15 +228,17 @@ deployments are available.
 <details>
 <summary><b>MCP Server Endpoints</b></summary>
 
-The MCP server endpoints are pre-configured with defaults. Override them only if you're using custom or self-hosted MCP servers:
+MCP tools are managed by Foundry Agent Service as project-level tool connections, created automatically during `azd up`. The following MCP servers are registered:
 
-| **Environment Variable** | **Default Endpoint** | **Provider** | **Purpose** |
-|--------------------------|----------------------|--------------|-------------|
-| `MCP_NPI_REGISTRY` | `https://mcp.deepsense.ai/npi_registry/mcp` | DeepSense | Provider NPI validation |
-| `MCP_ICD10_CODES` | `https://mcp.deepsense.ai/icd10_codes/mcp` | DeepSense | Diagnosis code lookup |
-| `MCP_CMS_COVERAGE` | `https://mcp.deepsense.ai/cms_coverage/mcp` | DeepSense | Medicare LCD/NCD policies |
-| `MCP_CLINICAL_TRIALS` | `https://mcp.deepsense.ai/clinical_trials/mcp` | DeepSense | Clinical trial search |
-| `MCP_PUBMED` | `https://pubmed.mcp.claude.com/mcp` | Anthropic | PubMed literature search |
+| **MCP Server** | **Endpoint** | **Provider** | **Auth** | **Purpose** |
+|----------------|-------------|--------------|----------|-------------|
+| ICD-10 Codes | `https://mcp.deepsense.ai/icd10_codes/mcp` | DeepSense | Key-based (`User-Agent`) | Diagnosis code lookup |
+| PubMed | `https://pubmed.mcp.claude.com/mcp` | Anthropic | Unauthenticated | PubMed literature search |
+| Clinical Trials | `https://mcp.deepsense.ai/clinical_trials/mcp` | DeepSense | Key-based (`User-Agent`) | Clinical trial search |
+| NPI Registry | `https://mcp.deepsense.ai/npi_registry/mcp` | DeepSense | Key-based (`User-Agent`) | Provider NPI validation |
+| CMS Coverage | `https://mcp.deepsense.ai/cms_coverage/mcp` | DeepSense | Key-based (`User-Agent`) | Medicare LCD/NCD policies |
+
+To use custom MCP servers, update the `MCP_CONNECTIONS` list in `scripts/register_agents.py`.
 
 </details>
 
@@ -976,13 +973,8 @@ All environment variables used by the application, organized by purpose.
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `MCP_NPI_REGISTRY` | No | `https://mcp.deepsense.ai/npi_registry/mcp` | NPI Registry — provider verification (CMS NPPES) |
-| `MCP_ICD10_CODES` | No | `https://mcp.deepsense.ai/icd10_codes/mcp` | ICD-10 diagnosis code validation (2026 code set) |
-| `MCP_CMS_COVERAGE` | No | `https://mcp.deepsense.ai/cms_coverage/mcp` | CMS Coverage — Medicare LCD/NCD policy lookup |
-| `MCP_PUBMED` | No | `https://pubmed.mcp.claude.com/mcp` | PubMed biomedical literature search |
-| `MCP_CLINICAL_TRIALS` | No | `https://mcp.deepsense.ai/clinical_trials/mcp` | ClinicalTrials.gov search |
 
-> **Note:** All DeepSense MCP servers require the header `User-Agent: claude-code/1.0`, which is injected automatically via a shared `httpx.AsyncClient` in each agent container's `main.py`.
+> **Note:** MCP server connections (NPI, ICD-10, CMS, PubMed, ClinicalTrials) are managed by Foundry Agent Service as project-level tool connections, created automatically by `scripts/register_agents.py` during `azd up`. No `MCP_*` environment variables are needed — MCP tools are visible in the Foundry portal under **Build → Tools**.
 
 ### How Variables Flow in Azure Deployment
 
