@@ -662,6 +662,10 @@ async def _run_review_pipeline(
     # --- Phase 1: Parallel — Compliance + Clinical Reviewer ---
     logger.info("Phase 1: Running Compliance and Clinical agents in parallel")
 
+    # Inject CPT pre-flight results into request data so the clinical agent
+    # can reference them in procedure_validation (source: "orchestrator_preflight")
+    clinical_request = {**request_data, "cpt_preflight": cpt_validation}
+
     await _emit({
         "phase": "phase_1", "status": "running", "progress_pct": 10,
         "message": "Running Compliance and Clinical agents in parallel",
@@ -676,7 +680,7 @@ async def _run_review_pipeline(
             _safe_run("Compliance Agent", run_compliance_review, request_data)
         )
         clinical_task = asyncio.create_task(
-            _safe_run("Clinical Reviewer Agent", run_clinical_review, request_data)
+            _safe_run("Clinical Reviewer Agent", run_clinical_review, clinical_request)
         )
 
         compliance_result, clinical_result = await asyncio.gather(
