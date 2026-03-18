@@ -27,6 +27,11 @@ def main() -> None:
     # --- Observability: export MAF spans to App Insights / Foundry portal traces ---
     _ai_conn = os.environ.get("APPLICATION_INSIGHTS_CONNECTION_STRING")
     if _ai_conn:
+        # The Foundry agentserver adapter reads APPLICATIONINSIGHTS_CONNECTION_STRING
+        # (no underscore) while azure-monitor-opentelemetry reads APPLICATION_INSIGHTS_CONNECTION_STRING.
+        # Set both so the adapter's built-in tracing also activates.
+        os.environ.setdefault("APPLICATIONINSIGHTS_CONNECTION_STRING", _ai_conn)
+    if _ai_conn:
         try:
             from azure.monitor.opentelemetry import configure_azure_monitor
             from agent_framework.observability import (
