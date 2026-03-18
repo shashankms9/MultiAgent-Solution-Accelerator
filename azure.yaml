@@ -742,6 +742,17 @@ hooks:
         if (-not $registered) { Write-Host "  ERROR: Agent registration failed after $maxAttempts attempts!" -ForegroundColor Red; exit 1 }
         Write-Host "  Agent registration complete" -ForegroundColor Green
 
+        # ── Pre-flight health check ──────────────────────────────────
+        Write-Host ""
+        Write-Host "  Running pre-flight health check..." -ForegroundColor Yellow
+        $healthCheck = python scripts/check_agents.py 2>&1
+        $healthCheck | ForEach-Object { Write-Host $_ }
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "  Pre-flight health check passed" -ForegroundColor Green
+        } else {
+            Write-Host "  WARNING: Some health checks did not pass — review output above" -ForegroundColor Yellow
+        }
+
         # Mark images as built so subsequent provisions use ACR images directly
         azd env set IMAGES_BUILT true
 
@@ -893,6 +904,14 @@ hooks:
         done
         if ! $REGISTERED; then printf "${Red}  ERROR: Agent registration failed after %d attempts!${NC}\n" "$MAX_ATTEMPTS"; exit 1; fi
         printf "${Green}  Agent registration complete${NC}\n"
+
+        # ── Pre-flight health check ──────────────────────────────────
+        printf "\n${Yellow}  Running pre-flight health check...${NC}\n"
+        if python scripts/check_agents.py 2>&1; then
+            printf "${Green}  Pre-flight health check passed${NC}\n"
+        else
+            printf "${Yellow}  WARNING: Some health checks did not pass — review output above${NC}\n"
+        fi
 
         azd env set IMAGES_BUILT true
 
