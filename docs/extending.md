@@ -70,6 +70,7 @@ def main() -> None:
         credential=DefaultAzureCredential(),
     ).as_agent(
         name="new-agent",
+        id="new-agent",  # Must match name used in register_agents.py for Foundry Traces
         instructions="You are a ... agent for prior authorization requests.",
         tools=[new_tool],                             # omit if no MCP
         context_providers=[skills_provider],

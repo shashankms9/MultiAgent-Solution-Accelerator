@@ -221,7 +221,10 @@ If traces don't appear in Foundry (Trace ID = "--", Duration = "--", Tokens = "-
 - Verify the Foundry project has Application Insights configured
 - If App Insights was added after agent registration, unregister and re-register
 - Verify your backend sends traces to the **same** Application Insights resource
-- Verify spans include `gen_ai.agent.id` matching the registered agent ID
+- Verify spans include `gen_ai.agent.id` matching the registered agent ID.
+  Each agent must set `id=` in `.as_agent()` matching the name used in
+  `register_agents.py`. Without this, MAF auto-generates random UUIDs and
+  Foundry can't correlate traces to agents.
 - **Check the env var name:** The Foundry agentserver adapter expects
   `APPLICATIONINSIGHTS_CONNECTION_STRING` (no underscore between APPLICATION
   and INSIGHTS). This is different from `APPLICATION_INSIGHTS_CONNECTION_STRING`

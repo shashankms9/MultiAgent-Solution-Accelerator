@@ -76,6 +76,8 @@ passes it via MAF's `default_options` parameter:
 agent = (
     AzureOpenAIResponsesClient(...)
     .as_agent(
+        name="clinical-reviewer-agent",
+        id="clinical-reviewer-agent",  # Must match registered name for Foundry Traces
         tools=[...],
         default_options={"response_format": ClinicalResult},
     )
