@@ -74,6 +74,7 @@ def main() -> None:
         credential=DefaultAzureCredential(),
     ).as_agent(
         name="coverage-assessment-agent",
+        id="coverage-assessment-agent",  # Must match registered agent name for Foundry Traces correlation
         instructions=(
             "You are a Coverage Assessment Agent for prior authorization requests. "
             "Use your coverage-assessment skill to verify provider credentials, search "

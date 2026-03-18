@@ -48,6 +48,7 @@ def main() -> None:
         credential=DefaultAzureCredential(),
     ).as_agent(
         name="compliance-agent",
+        id="compliance-agent",  # Must match registered agent name for Foundry Traces correlation
         instructions=(
             "You are a Compliance Validation Agent for prior authorization requests. "
             "Use your compliance-review skill to validate documentation completeness "

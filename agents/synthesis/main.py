@@ -49,6 +49,7 @@ def main() -> None:
         credential=DefaultAzureCredential(),
     ).as_agent(
         name="synthesis-agent",
+        id="synthesis-agent",  # Must match registered agent name for Foundry Traces correlation
         instructions=(
             "You are the Synthesis Agent for prior authorization review. "
             "Use your synthesis-decision skill to evaluate the outputs from the "

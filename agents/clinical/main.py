@@ -85,6 +85,7 @@ def main() -> None:
         credential=DefaultAzureCredential(),
     ).as_agent(
         name="clinical-reviewer-agent",
+        id="clinical-reviewer-agent",  # Must match registered agent name for Foundry Traces correlation
         instructions=(
             "You are a Clinical Reviewer Agent for prior authorization requests. "
             "Use your clinical-review skill to validate ICD-10 codes, extract clinical "
