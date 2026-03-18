@@ -24,39 +24,14 @@ load_dotenv(override=True)  # override=True required for Foundry-deployed env va
 
 
 def main() -> None:
-    # --- Observability: export MAF spans to App Insights / Foundry portal traces ---
+    # --- Observability: env var setup for Foundry agentserver adapter ---
     _ai_conn = os.environ.get("APPLICATION_INSIGHTS_CONNECTION_STRING")
     if _ai_conn:
-        # The Foundry agentserver adapter reads APPLICATIONINSIGHTS_CONNECTION_STRING
-        # (no underscore) while azure-monitor-opentelemetry reads APPLICATION_INSIGHTS_CONNECTION_STRING.
-        # Set both so the adapter's built-in tracing also activates.
         os.environ.setdefault("APPLICATIONINSIGHTS_CONNECTION_STRING", _ai_conn)
-    if _ai_conn:
-        try:
-            from azure.monitor.opentelemetry import configure_azure_monitor
-            from agent_framework.observability import (
-                create_resource,
-                create_metric_views,
-                enable_instrumentation,
-            )
-            # Sets the cloud role name shown on the Application Map node.
-            # Use setdefault so an explicit OTEL_SERVICE_NAME env var always wins.
-            os.environ.setdefault("OTEL_SERVICE_NAME", "agent-synthesis")
-            configure_azure_monitor(
-                connection_string=_ai_conn,
-                resource=create_resource(),
-                views=create_metric_views(),
-                enable_live_metrics=True,
-                enable_performance_counters=False,
-            )
-            enable_instrumentation(
-                enable_sensitive_data=os.environ.get("OTEL_RECORD_CONTENT", "").lower() == "true",
-            )
-            print("[observability] Azure Monitor + MAF instrumentation enabled for agent-synthesis")
-        except Exception as _obs_err:  # best-effort — never crash the agent
-            print(f"[observability] WARNING: failed to initialize — {_obs_err}")
+        print("[observability] App Insights connection string set for agent-synthesis")
     else:
         print("[observability] APPLICATION_INSIGHTS_CONNECTION_STRING not set — telemetry disabled")
+    os.environ.setdefault("OTEL_SERVICE_NAME", "agent-synthesis")
 
     # --- No MCP tools — synthesis is pure reasoning over agent outputs ---
 
