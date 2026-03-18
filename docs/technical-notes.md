@@ -185,57 +185,30 @@ portal's built-in Traces view when App Insights is linked to the Foundry project
 | Compliance agent | `agent-compliance` | Same as above |
 | Synthesis agent | `agent-synthesis` | Same as above |
 
-Each process calls `configure_azure_monitor()` before any agents start.
-Agent containers additionally call `enable_instrumentation()` to activate
-MAF's built-in OTel instrumentation. The backend's `observability.py` does
-**not** call `enable_instrumentation()` — that function is MAF-specific and
-only valid in agent processes.
+Each process configures observability differently based on its role:
 
-Agent containers also pass two MAF-specific arguments to `configure_azure_monitor()`
-per the official Foundry tracing sample (`agent_with_foundry_tracing.py`):
+- **Backend** (`observability.py`): Calls `configure_azure_monitor()` directly
+  before the FastAPI app starts. This is the standard Azure Monitor SDK pattern
+  for non-MAF applications.
+- **Agent containers**: Do NOT call `configure_azure_monitor()` manually.
+  Instead, the Foundry agentserver adapter's `init_tracing()` method (called
+  internally by `from_agent_framework(agent).run()`) handles the full OTel
+  setup — creating exporters, calling `configure_otel_providers()`, and
+  enabling MAF instrumentation. Agent code only sets env vars before the
+  adapter runs.
 
-- `resource=create_resource()` — Creates an OpenTelemetry `Resource` with
-  MAF-specific attributes (`service.name`, `service.version`). **Required for
-  the Foundry portal Traces tab** to correlate spans to registered agents.
-- `views=create_metric_views()` — Registers MAF histogram views for token
-  usage and agent duration metrics.
-- `enable_performance_counters=False` — Disabled because container environments
-  (Foundry Hosted Agents) don't support performance counter collection.
+> **Why agents don't call `configure_azure_monitor()` directly:** The adapter's
+> `init_tracing()` calls `configure_otel_providers()` which **replaces** any
+> existing OTel providers. If agent code calls `configure_azure_monitor()` first,
+> the adapter overwrites it — creating a conflict where traces go to App Insights
+> but the Foundry portal can't correlate them (Trace ID = "--", Duration = "--").
+> Letting the adapter handle everything avoids this conflict.
 
 ### Content Recording (Sensitive Data)
 
-By default, MAF redacts prompt/response content and tool arguments/results from
-telemetry spans. This protects PHI (Protected Health Information) and other
-sensitive data in production.
-
-To enable full content recording for **development and debugging**:
-
-```env
-OTEL_RECORD_CONTENT=true
-```
-
-When enabled, `enable_instrumentation(enable_sensitive_data=True)` records:
-- Full LLM prompts and responses in `chat` spans
-- Tool call arguments and results in `execute_tool` spans
-- Agent input/output content in `invoke_agent` spans
-
-This is controlled per-agent via the `OTEL_RECORD_CONTENT` environment variable.
-
-> **⚠️ Production warning:** Do NOT set `OTEL_RECORD_CONTENT=true` in production.
-> Prior authorization requests contain PHI (patient names, DOBs, diagnoses,
-> clinical notes). Recording this data in Application Insights telemetry may
-> violate HIPAA and organizational data governance policies. Leave this variable
-> unset (or set to `false`) in production environments.
-
-To enable for a specific agent during debugging, add it to the agent's
-environment variables in `register_agents.py` or the Foundry portal:
-
-```python
-"env": {
-    ...
-    "OTEL_RECORD_CONTENT": "true",  # DEBUG ONLY — remove for production
-}
-```
+The adapter's `configure_otel_providers()` enables `enable_sensitive_data=True`
+by default, recording full prompts, tool arguments, and results in spans.
+In production, sensitive data can be controlled via the adapter's configuration.
 
 ### Application Map
 
@@ -304,19 +277,19 @@ automatically from the shared `monitoring` module output):
 APPLICATION_INSIGHTS_CONNECTION_STRING=InstrumentationKey=<key>;IngestionEndpoint=...
 ```
 
-**Important: Dual env var names for agent containers.** Two packages in each
-agent container read different env var names for the same connection string:
+**Important: Dual env var names for agent containers.** The Foundry agentserver
+adapter reads a different env var name than the Azure Monitor SDK:
 
 | Package | Env var name | Convention |
 |---------|-------------|------------|
-| `azure-monitor-opentelemetry` | `APPLICATION_INSIGHTS_CONNECTION_STRING` | Azure Monitor SDK |
+| `azure-monitor-opentelemetry` (backend) | `APPLICATION_INSIGHTS_CONNECTION_STRING` | Azure Monitor SDK |
 | `azure-ai-agentserver` (Foundry adapter) | `APPLICATIONINSIGHTS_CONNECTION_STRING` | Azure App Service |
 
-The agent code handles this by calling `os.environ.setdefault("APPLICATIONINSIGHTS_CONNECTION_STRING", ...)`
+Agent code bridges this by calling `os.environ.setdefault("APPLICATIONINSIGHTS_CONNECTION_STRING", ...)`
 when `APPLICATION_INSIGHTS_CONNECTION_STRING` is set. Both env vars are also
 passed to agent containers via `register_agents.py`. Without the adapter-expected
-name, the Foundry portal Traces tab shows empty Trace ID / Duration / Tokens and
-the Operate tab shows "0/3 monitoring features enabled."
+name, the adapter's `init_tracing()` skips setup entirely and the Foundry portal
+shows empty Trace ID / Duration / Tokens and "0/3 monitoring features enabled."
 
 Locally (docker-compose), the variable is intentionally absent — all
 observability blocks are no-ops so the app runs without App Insights.
