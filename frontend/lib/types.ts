@@ -61,6 +61,7 @@ export interface ClinicalExtraction {
   functional_limitations: string[];
   diagnostic_findings: string[];
   duration_and_progression: string;
+  medical_history_and_comorbidities?: string;
   extraction_confidence: number; // 0-100
 }
 

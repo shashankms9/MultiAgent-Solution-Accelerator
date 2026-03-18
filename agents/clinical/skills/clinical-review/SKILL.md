@@ -179,6 +179,7 @@ Return JSON with this exact structure:
         "functional_limitations": ["..."],
         "diagnostic_findings": ["finding (date if available)"],
         "duration_and_progression": "...",
+        "medical_history_and_comorbidities": "...",
         "extraction_confidence": 75
     },
     "literature_support": [

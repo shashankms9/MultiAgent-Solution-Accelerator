@@ -678,7 +678,7 @@ def _generate_clinical_checks(raw: dict) -> list[dict]:
             "Functional Limitations": _get_any_field(extraction, "functional_limitations", "functional_status", "limitations", "functional_impact", default=[]),
             "Diagnostic Findings": _get_any_field(extraction, "diagnostic_findings", "diagnostics", "findings", "diagnostic_results", "test_results", "lab_results", default=[]),
             "Duration and Progression": _get_any_field(extraction, "duration_and_progression", "duration", "progression", "timeline", "disease_progression", "course", default=""),
-            "Medical History / Comorbidities": _get_any_field(extraction, "medical_history", "comorbidities", "past_medical_history", "pmh", "relevant_medical_history", "relevant_history", "medical_history_comorbidities", default=""),
+            "Medical History / Comorbidities": _get_any_field(extraction, "medical_history_and_comorbidities", "medical_history", "comorbidities", "past_medical_history", "pmh", "relevant_medical_history", "relevant_history", "medical_history_comorbidities", default=""),
         }
         extracted_count = sum(1 for v in field_checks.values() if v)
         checks.append({

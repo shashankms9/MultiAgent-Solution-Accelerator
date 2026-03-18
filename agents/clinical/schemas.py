@@ -37,6 +37,7 @@ class ClinicalExtraction(BaseModel):
     functional_limitations: list[str] = []
     diagnostic_findings: list[str] = []
     duration_and_progression: str = ""
+    medical_history_and_comorbidities: str = ""
     extraction_confidence: int = 0  # 0-100 overall extraction confidence
 
 
