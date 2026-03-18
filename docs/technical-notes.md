@@ -211,25 +211,34 @@ Each process configures observability differently based on its role:
 
 ### Agent ID / Name for Trace Correlation
 
-The agentserver adapter (v1.0.0b17) populates `gen_ai.agent.id` and
-`gen_ai.agent.name` span attributes from the incoming request payload's
-`agent` field (via `AgentRunContext.get_agent_id_object()`). Foundry
-uses `gen_ai.agent.id` to correlate traces to registered agents.
+> **TODO (vNext):** The `_patch_trace_agent_id()` monkey-patch in each agent's
+> `main.py` is a workaround for the current Hosted Agents Preview. It should be
+> removed when migrating to the vNext hosted agents backend, which handles
+> telemetry at the platform level via Entra-based agent identity.
 
-However, Foundry Agent Service does not include the `agent` reference
-when forwarding requests to hosted containers. The adapter gets `None`
-from `get_agent_id_object()`, so `gen_ai.agent.id` is empty — causing
-Trace ID = "--" in the Foundry portal.
+The agentserver adapter (v1.0.0b17) has two gaps that prevent Foundry
+trace correlation for hosted agents:
+
+1. **Missing `gen_ai.agent.id` on spans.** The adapter reads this from the
+   request payload's `agent` field (via `AgentRunContext.get_agent_id_object()`),
+   but Foundry Agent Service does not include the `agent` reference when
+   forwarding requests to hosted containers.
+
+2. **Missing Foundry env var dimensions on spans.** The adapter populates
+   `azure.ai.agentserver.agent_id`, `agent_name`, and `agent_project_resource_id`
+   on log records (via `CustomDimensionsFilter`/`get_dimensions()`), but NOT
+   on OTel spans (requests/dependencies tables).
 
 **Fix:** All four agent containers monkey-patch
 `AgentRunContextMiddleware.set_run_context_to_context_var` (via
-`_patch_trace_agent_id()` in each `main.py`) to inject the agent name
-as a fallback when the request payload lacks an agent reference.
+`_patch_trace_agent_id()` in each `main.py`) to inject both `gen_ai.agent.id`
+and the Foundry env var dimensions into the span context.
 
-This is a known gap in the Foundry Agent Service ↔ agentserver adapter
-interop in `azure-ai-agentserver-core/agentframework` 1.0.0b17. Future
-versions may include the `agent` reference in forwarded requests, making
-this patch unnecessary.
+**Current status:** The patch correctly populates all attributes in App Insights
+spans. However, the Foundry Traces tab still shows "--" because it reads
+from a Foundry internal OTEL collector pipeline that does not surface hosted
+agent data in the current Preview version. The Monitor tab (App Insights)
+works correctly.
 
 ### Content Recording (Sensitive Data)
 

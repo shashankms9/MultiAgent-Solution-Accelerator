@@ -218,6 +218,15 @@ A normal Clinical result has 3 expected top-level keys (`diagnosis_validation`, 
 
 If traces don't appear in Foundry (Trace ID = "--", Duration = "--", Tokens = "--"):
 
+> **Known limitation (current Hosted Agents Preview):** The Foundry Traces tab
+> does not display trace data for hosted agents even when all span attributes
+> are correctly populated in App Insights. The Traces tab reads from a Foundry
+> internal OTEL collector, which does not surface hosted agent spans in the
+> current version. The Monitor tab (which reads from App Insights) works
+> correctly. This is expected to be fixed in the vNext hosted agents backend.
+> The `_patch_trace_agent_id()` monkey-patch in each agent's `main.py` should
+> be removed once vNext is available.
+
 - Verify the Foundry project has Application Insights configured
 - If App Insights was added after agent registration, unregister and re-register
 - Verify your backend sends traces to the **same** Application Insights resource
