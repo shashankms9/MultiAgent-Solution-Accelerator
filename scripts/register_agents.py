@@ -152,6 +152,15 @@ def run() -> None:
     subscription_id = os.environ.get("AZURE_SUBSCRIPTION_ID", "")
     resource_group = os.environ.get("AZURE_RESOURCE_GROUP", "")
 
+    # When using 'latest' tag, Foundry may not re-pull the image for an existing
+    # version because the image reference hasn't changed. The azd up hook always
+    # sets IMAGE_TAG to a timestamp (YYYYMMDDHHmmss) which avoids this issue.
+    # For manual runs without IMAGE_TAG set, warn the user.
+    if image_tag == "latest":
+        print("  WARNING: IMAGE_TAG=latest — Foundry may not re-pull updated images.")
+        print("  For reliable deploys, set IMAGE_TAG to a unique value:")
+        print("    export IMAGE_TAG=$(date -u +%Y%m%d%H%M%S)")
+
     if app_insights_cs:
         print(f"  App Insights: connection string set (len={len(app_insights_cs)})")
     else:
