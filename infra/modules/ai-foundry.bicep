@@ -113,9 +113,9 @@ resource modelDeployment 'Microsoft.CognitiveServices/accounts/deployments@2025-
 // Enables Foundry Agent Service to provision and manage ACA containers for
 // hosted agents deployed to this Foundry account. Must be created once per
 // Foundry account.
-// Note: enablePublicHostingEnvironment is not supported in stable API versions.
-// Using 2025-06-01 without the property provisions the capability host correctly
-// for public (non-VNet) deployments.
+// Note: enablePublicHostingEnvironment is not a valid property in any stable
+// API version. Omitting it provisions the capability host correctly for public
+// (non-VNet) deployments.
 resource capabilityHost 'Microsoft.CognitiveServices/accounts/capabilityHosts@2025-12-01' = {
   name: 'accountcaphost'
   parent: foundryAccount
