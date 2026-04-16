@@ -1,8 +1,5 @@
 // ---------------------------------------------------------------------------
 // Prior Auth MAF — Main Bicep template
-// Deploys: Resource Group, Microsoft Foundry (Resource + Project), Container Registry,
-//          Container Apps Environment, Backend + 4 Agent + Frontend Container Apps,
-//          Log Analytics, App Insights, Role Assignments (Cognitive Services OpenAI User, Azure AI User)
 // ---------------------------------------------------------------------------
 
 targetScope = 'subscription'
@@ -15,38 +12,32 @@ targetScope = 'subscription'
 param environmentName string
 
 @minLength(1)
-@description('Primary location for all resources. gpt-5.4-mini GlobalStandard is available in East US 2 and Sweden Central. DataZoneStandard is available in East US 2 only.')
+@description('Primary location for all resources.')
 @allowed([
   'eastus2'
   'swedencentral'
 ])
 param location string
 
-@description('Azure OpenAI deployment name to use across all agent containers (e.g., gpt-5.4-mini)')
+@description('Azure OpenAI deployment name')
 param azureOpenAIDeploymentName string = 'gpt-5.4-mini'
 
-@description('Deployment SKU: GlobalStandard (default, wider region support) or DataZoneStandard (data residency, East US 2 only).')
+@description('Deployment SKU')
 @allowed(['GlobalStandard', 'DataZoneStandard'])
 param deploymentSkuName string = 'GlobalStandard'
 
-@description('Whether container images have been built to ACR (set automatically by postprovision hook)')
+@description('Whether container images have been built')
 param imagesBuilt string = ''
 
-// ── MCP Server URL parameters (all have production defaults) ────────────────
+// ✅ NEW PARAMETER (ONLY ADDITION)
+@description('Name of the existing Resource Group to deploy resources into')
+param existingResourceGroupName string
 
-@description('ICD-10 diagnosis code validation MCP server URL')
+// ── MCP URLs ────────────────────────────────────────────────────────────────
 param mcpIcd10CodesUrl string = 'https://mcp.deepsense.ai/icd10_codes/mcp'
-
-@description('PubMed biomedical literature search MCP server URL')
 param mcpPubmedUrl string = 'https://pubmed.mcp.claude.com/mcp'
-
-@description('ClinicalTrials.gov search MCP server URL')
 param mcpClinicalTrialsUrl string = 'https://mcp.deepsense.ai/clinical_trials/mcp'
-
-@description('NPI Registry provider verification MCP server URL')
 param mcpNpiRegistryUrl string = 'https://mcp.deepsense.ai/npi_registry/mcp'
-
-@description('CMS Coverage Medicare LCD/NCD policy lookup MCP server URL')
 param mcpCmsCoverageUrl string = 'https://mcp.deepsense.ai/cms_coverage/mcp'
 
 // ── Variables ───────────────────────────────────────────────────────────────
@@ -58,12 +49,11 @@ var tags = {
   'solution-accelerator': 'prior-auth-maf'
 }
 
-// ── Resource Group ──────────────────────────────────────────────────────────
+// ❌ REMOVED: Resource Group creation
 
-resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' = {
-  name: '${abbrs.resourcesResourceGroups}${environmentName}'
-  location: location
-  tags: tags
+// ✅ EXISTING RESOURCE GROUP (ONLY CHANGE)
+resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' existing = {
+  name: existingResourceGroupName
 }
 
 // ── Container Registry ──────────────────────────────────────────────────────
@@ -78,7 +68,7 @@ module containerRegistry './modules/container-registry.bicep' = {
   }
 }
 
-// ── Log Analytics + Application Insights ────────────────────────────────────
+// ── Monitoring ──────────────────────────────────────────────────────────────
 
 module monitoring './modules/monitoring.bicep' = {
   name: 'monitoring'
@@ -91,7 +81,7 @@ module monitoring './modules/monitoring.bicep' = {
   }
 }
 
-// ── Microsoft Foundry (Resource + Project) ──────────────────────────────────
+// ── AI Foundry ──────────────────────────────────────────────────────────────
 
 module aiFoundry './modules/ai-foundry.bicep' = {
   name: 'ai-foundry'
@@ -120,7 +110,7 @@ module containerAppsEnv './modules/container-apps-env.bicep' = {
   }
 }
 
-// ── Backend Container App ────────────────────────────────────────────────────────
+// ── Backend ─────────────────────────────────────────────────────────────────
 
 module backend './modules/container-app.bicep' = {
   name: 'backend'
@@ -139,9 +129,7 @@ module backend './modules/container-app.bicep' = {
     memory: '2Gi'
     minReplicas: 1
     env: [
-      // Foundry project endpoint — backend calls Foundry Hosted Agents via the Responses API
       { name: 'AZURE_AI_PROJECT_ENDPOINT', value: aiFoundry.outputs.projectEndpoint }
-      // Foundry Hosted Agent names (as registered by scripts/register_agents.py post-deploy)
       { name: 'HOSTED_AGENT_CLINICAL_NAME', value: 'clinical-reviewer-agent' }
       { name: 'HOSTED_AGENT_COVERAGE_NAME', value: 'coverage-assessment-agent' }
       { name: 'HOSTED_AGENT_COMPLIANCE_NAME', value: 'compliance-agent' }
@@ -154,10 +142,8 @@ module backend './modules/container-app.bicep' = {
     healthCheckPath: '/health'
   }
 }
-// ── Role Assignments ─────────────────────────────────────────────────────────
-// Backend → CognitiveServicesOpenAIUser on Foundry (Responses API + agent_reference)
-// Foundry project identity → AcrPull on ACR (agent image pull for hosted agents)
-// Deployer → Azure AI User is assigned via `az role assignment create` in postprovision hook (idempotent)
+
+// ── Role Assignments ────────────────────────────────────────────────────────
 
 module roleAssignments './modules/role-assignments.bicep' = {
   name: 'role-assignments'
@@ -169,7 +155,8 @@ module roleAssignments './modules/role-assignments.bicep' = {
     foundryProjectPrincipalId: aiFoundry.outputs.projectPrincipalId
   }
 }
-// ── Frontend Container App ──────────────────────────────────────────────────
+
+// ── Frontend ────────────────────────────────────────────────────────────────
 
 module frontend './modules/container-app.bicep' = {
   name: 'frontend'
