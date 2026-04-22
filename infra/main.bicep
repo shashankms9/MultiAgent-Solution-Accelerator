@@ -130,6 +130,7 @@ module backend './modules/container-app.bicep' = {
     minReplicas: 1
     env: [
       { name: 'AZURE_AI_PROJECT_ENDPOINT', value: aiFoundry.outputs.projectEndpoint }
+      { name: 'AZURE_OPENAI_DEPLOYMENT_NAME', value: azureOpenAIDeploymentName }
       { name: 'HOSTED_AGENT_CLINICAL_NAME', value: 'clinical-reviewer-agent' }
       { name: 'HOSTED_AGENT_COVERAGE_NAME', value: 'coverage-assessment-agent' }
       { name: 'HOSTED_AGENT_COMPLIANCE_NAME', value: 'compliance-agent' }

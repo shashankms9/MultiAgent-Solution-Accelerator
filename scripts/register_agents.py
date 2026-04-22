@@ -188,6 +188,7 @@ def run() -> None:
             ["az", "acr", "repository", "show-tags", "--name", acr_name,
              "--repository", img, "--query", f"[?@=='{image_tag}']", "-o", "tsv"],
             capture_output=True, text=True,
+            shell=(sys.platform == "win32"),
         )
         if not result.stdout.strip():
             missing_images.append(f"{img}:{image_tag}")
@@ -210,6 +211,7 @@ def run() -> None:
         from azure.ai.projects.models import (
             AgentProtocol,
             HostedAgentDefinition,
+            ImageBasedHostedAgentDefinition,
             ProtocolVersionRecord,
         )
         from azure.core.pipeline.policies import CustomHookPolicy
@@ -362,7 +364,7 @@ def run() -> None:
             agent_version = client.agents.create_version(
                 agent_name=name,
                 description=agent_def["description"],
-                definition=HostedAgentDefinition(
+                definition=ImageBasedHostedAgentDefinition(
                     container_protocol_versions=[
                         ProtocolVersionRecord(
                             protocol=AgentProtocol.RESPONSES, version="v1"
@@ -393,6 +395,7 @@ def run() -> None:
                     "--agent-version", str(version_num),
                 ],
                 check=True, capture_output=True, text=True,
+                shell=(sys.platform == "win32"),
             )
             print(" started")
         except subprocess.CalledProcessError as exc:

@@ -34,6 +34,7 @@ def _get_azd_value(key):
         result = subprocess.run(
             ["azd", "env", "get-value", key],
             capture_output=True, text=True, timeout=10,
+            shell=(sys.platform == "win32"),
         )
         val = result.stdout.strip()
         return val if val and "ERROR" not in val else ""
@@ -48,41 +49,64 @@ def _section(title):
     print(f"  {'='*50}")
 
 
+def _get_sdk_client(project_endpoint):
+    """Build an AIProjectClient with the Foundry preview header."""
+    try:
+        from azure.ai.projects import AIProjectClient
+        from azure.core.pipeline.policies import CustomHookPolicy
+        from azure.identity import DefaultAzureCredential
+
+        class _PreviewPolicy(CustomHookPolicy):
+            def on_request(self, request):
+                request.http_request.headers["Foundry-Features"] = "HostedAgents=V1Preview"
+
+        return AIProjectClient(
+            endpoint=project_endpoint,
+            credential=DefaultAzureCredential(),
+            allow_preview=True,
+            per_call_policies=[_PreviewPolicy()],
+        )
+    except Exception as e:
+        return None
+
+
 def check_agents(account, project, expected_version=None):
-    """Check agent registration and version."""
+    """Check agent registration and version using the Python SDK."""
     _section("Agent Registration")
+
+    project_endpoint = (
+        os.environ.get("AZURE_AI_PROJECT_ENDPOINT")
+        or _get_azd_value("AI_FOUNDRY_PROJECT_ENDPOINT")
+        or f"https://{account}.cognitiveservices.azure.com/api/projects/{project}"
+    )
+
+    client = _get_sdk_client(project_endpoint)
     results = []
     all_ok = True
+
     for name in AGENTS:
         try:
-            result = subprocess.run(
-                ["az", "cognitiveservices", "agent", "show",
-                 "--account-name", account, "--project-name", project,
-                 "--name", name, "-o", "json"],
-                capture_output=True, text=True, timeout=30,
-            )
-            if result.returncode == 0:
-                data = json.loads(result.stdout)
-                latest = data.get("versions", {}).get("latest", {})
-                version = latest.get("version", "?")
-                defn = latest.get("definition", {})
-                env = defn.get("environment_variables", {})
-                has_ai_cs = bool(env.get("APPLICATIONINSIGHTS_CONNECTION_STRING"))
-                has_ai_cs_alt = bool(env.get("APPLICATION_INSIGHTS_CONNECTION_STRING"))
-                version_ok = not expected_version or str(version) == str(expected_version)
-                results.append({
-                    "name": name, "version": version, "status": "registered",
-                    "has_ai_cs": has_ai_cs, "has_ai_cs_alt": has_ai_cs_alt,
-                    "version_ok": version_ok,
-                })
-                if not version_ok:
-                    all_ok = False
-            else:
-                results.append({"name": name, "version": "?", "status": "not found",
-                                "has_ai_cs": False, "has_ai_cs_alt": False, "version_ok": False})
+            agent = client.agents.get(agent_name=name)
+            # Get the latest version info
+            versions = getattr(agent, "versions", None) or {}
+            latest = versions.get("latest", {}) if isinstance(versions, dict) else {}
+            version = latest.get("version", "?") if latest else getattr(agent, "version", "?")
+            defn = latest.get("definition", {}) if latest else {}
+            env = defn.get("environment_variables", {}) if defn else {}
+            has_ai_cs = bool(env.get("APPLICATIONINSIGHTS_CONNECTION_STRING"))
+            has_ai_cs_alt = bool(env.get("APPLICATION_INSIGHTS_CONNECTION_STRING"))
+            version_ok = not expected_version or str(version) == str(expected_version)
+            results.append({
+                "name": name, "version": version, "status": "registered",
+                "has_ai_cs": has_ai_cs, "has_ai_cs_alt": has_ai_cs_alt,
+                "version_ok": version_ok,
+            })
+            if not version_ok:
                 all_ok = False
-        except Exception:
-            results.append({"name": name, "version": "?", "status": "error",
+        except Exception as exc:
+            err = str(exc)
+            status = "not found" if "404" in err or "NotFound" in err else "error"
+            results.append({"name": name, "version": "?", "status": status,
                             "has_ai_cs": False, "has_ai_cs_alt": False, "version_ok": False})
             all_ok = False
 
@@ -90,8 +114,8 @@ def check_agents(account, project, expected_version=None):
     print(f"  {'-'*30} {'-'*8}  {'-'*6}  {'-'*12}")
     for r in results:
         version = str(r["version"])
-        cs_icon = "✓" if r["has_ai_cs"] else "✗"
-        status_icon = "✓" if r["status"] == "registered" and r["version_ok"] else "✗"
+        cs_icon = "OK" if r["has_ai_cs"] else "NO"
+        status_icon = "[OK]" if r["status"] == "registered" and r["version_ok"] else "[!!]"
         print(f"  {r['name']:<30} {'v' + version:>8}  {cs_icon:>6}  {status_icon} {r['status']}")
     print()
 
@@ -138,6 +162,7 @@ def check_mcp_connections(account, project, subscription, resource_group):
                       f"/accounts/{account}/projects/{project}/connections"
                       f"?api-version=2025-10-01-preview"],
             capture_output=True, text=True, timeout=30,
+            shell=(sys.platform == "win32"),
         )
         if result.returncode == 0:
             data = json.loads(result.stdout)

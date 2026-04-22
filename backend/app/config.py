@@ -20,6 +20,7 @@ class Settings:
     # name vars automatically. The backend calls agents via the Foundry Responses
     # API with agent_reference routing; no direct agent URLs are used.
     AZURE_AI_PROJECT_ENDPOINT: str = os.getenv("AZURE_AI_PROJECT_ENDPOINT", "")
+    AZURE_OPENAI_DEPLOYMENT_NAME: str = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "")
     HOSTED_AGENT_CLINICAL_NAME: str = os.getenv(
         "HOSTED_AGENT_CLINICAL_NAME", "clinical-reviewer-agent"
     )
